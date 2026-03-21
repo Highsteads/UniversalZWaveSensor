@@ -8,4 +8,34 @@
         <Label>Log unknown command classes</Label>
         <Description>Store hex bytes of any unrecognised report in the rawLastReport state and write to Indigo log.</Description>
     </Field>
+
+    <SeparatorLine/>
+
+    <Field id="tempUnit" type="menu" defaultValue="degC">
+        <Label>Temperature unit</Label>
+        <Description>All temperature reports are converted to this unit before storing, regardless of what the sensor reports.</Description>
+        <List>
+            <Option value="degC">Celsius (degC)</Option>
+            <Option value="degF">Fahrenheit (degF)</Option>
+        </List>
+    </Field>
+
+    <SeparatorLine/>
+
+    <Field id="enableStaleDetection" type="checkbox" defaultValue="true">
+        <Label>Enable stale device detection</Label>
+        <Description>Log a warning and mark deviceOnline=False if a device has not reported within the threshold below.</Description>
+    </Field>
+    <Field id="staleThresholdHours" type="menu" defaultValue="24">
+        <Label>Stale threshold</Label>
+        <Description>How long without any report before a device is considered offline. Battery devices report infrequently — allow extra margin.</Description>
+        <List>
+            <Option value="4">4 hours</Option>
+            <Option value="8">8 hours</Option>
+            <Option value="12">12 hours</Option>
+            <Option value="24">24 hours</Option>
+            <Option value="48">48 hours</Option>
+            <Option value="72">72 hours</Option>
+        </List>
+    </Field>
 </PluginConfig>

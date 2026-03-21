@@ -1,12 +1,13 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
 # Filename:    test_plugin.py
-# Description: Mock test suite for Universal Z-Wave Sensor plugin v2.1
-#              Covers all raw Z-Wave parsers (_handle_* methods) and
-#              validateDeviceConfigUi known-node detection.
+# Description: Mock test suite for Universal Z-Wave Sensor plugin v3.0
+#              Covers all raw Z-Wave parsers, validateDeviceConfigUi,
+#              multi-channel routing, stale detection, temperature units,
+#              and wake-up interval handling.
 # Author:      CliveS & Claude Sonnet 4.6
 # Date:        21-03-2026
-# Version:     2.1
+# Version:     3.0
 #
 # Run from the Server Plugin directory:
 #   python3 test_plugin.py -v
@@ -15,6 +16,7 @@ import os
 import sys
 import struct
 import unittest
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
 
@@ -62,6 +64,7 @@ class MockDevice:
         return f"MockDevice(id={self.id}, name={self.name!r})"
 
     def updateStateOnServer(self, key, value=None, uiValue=None):
+        self.states[key]       = value
         self.state_writes[key] = {"value": value, "uiValue": uiValue}
 
     def updateStateImageOnServer(self, sel):
@@ -105,18 +108,22 @@ import plugin as _plugin_mod            # noqa: E402  (after sys.modules patch)
 # Helper: create a Plugin instance without triggering the Indigo lifecycle
 # ==============================================================================
 
-def make_plugin(debug=False):
+def make_plugin(debug=False, temp_unit="degC"):
     p = _plugin_mod.Plugin.__new__(_plugin_mod.Plugin)
-    p.debug          = debug
-    p.log_unknown    = True
-    p.pluginId       = "com.clives.universal-zwave-sensor"
-    p.node_to_device = {}
-    p.logger         = MagicMock()
+    p.debug           = debug
+    p.log_unknown     = True
+    p.temp_unit       = temp_unit
+    p.stale_enabled   = True
+    p.stale_hours     = 24
+    p.pluginId        = "com.clives.universal-zwave-sensor"
+    p.node_to_device  = {}
+    p.stale_device_ids = set()
+    p.logger          = MagicMock()
     return p
 
 
 # ==============================================================================
-# Tests: validateDeviceConfigUi — known-node detection
+# Tests: validateDeviceConfigUi — known-node detection and endpoint validation
 # ==============================================================================
 
 class TestValidateDeviceConfigUi(unittest.TestCase):
@@ -125,21 +132,19 @@ class TestValidateDeviceConfigUi(unittest.TestCase):
         self.p        = make_plugin()
         self.dev_dict = MockDevicesDict()
         _indigo.devices = self.dev_dict
-        _indigo.Dict    = dict      # Indigo's dict type used for errors
+        _indigo.Dict    = dict
 
-    def _validate(self, node_str, device_id=0):
-        values_dict = {"nodeId": node_str}
+    def _validate(self, node_str, device_id=0, endpoint_str=""):
+        values_dict = {"nodeId": node_str, "endpointId": endpoint_str}
         return self.p.validateDeviceConfigUi(values_dict, "zwaveSensor", device_id)
 
     def test_valid_unknown_node_passes(self):
-        """Node with no existing Indigo devices -> validation passes, address set."""
         ok, values, errors = self._validate("50")
         self.assertTrue(ok)
         self.assertEqual(values["address"], "50")
         self.assertNotIn("nodeId", errors)
 
     def test_known_node_blocked(self):
-        """Node already owned by a native Indigo device -> validation fails with explanation."""
         native = MockDevice(5, "Front Door Motion", address="223",
                             plugin_id="com.perceptiveautomation.indigoplugin.zwave")
         self.dev_dict[5] = native
@@ -150,7 +155,6 @@ class TestValidateDeviceConfigUi(unittest.TestCase):
         self.assertIn("zwaveCommandReceived", errors["nodeId"])
 
     def test_own_plugin_device_not_flagged(self):
-        """Existing plugin devices on the same node are not counted as native devices."""
         own = MockDevice(10, "My Sensor", address="223",
                          plugin_id="com.clives.universal-zwave-sensor")
         self.dev_dict[10] = own
@@ -159,16 +163,13 @@ class TestValidateDeviceConfigUi(unittest.TestCase):
         self.assertNotIn("nodeId", errors)
 
     def test_device_being_edited_not_flagged(self):
-        """The device currently being edited is excluded from the check."""
         native = MockDevice(10, "My Sensor", address="223",
                             plugin_id="com.perceptiveautomation.indigoplugin.zwave")
         self.dev_dict[10] = native
-        # Editing device_id=10 — should not flag itself
         ok, _, errors = self._validate("223", device_id=10)
         self.assertTrue(ok)
 
     def test_invalid_node_id_rejected(self):
-        """Non-numeric or out-of-range node ID -> error, no device scan attempted."""
         ok, _, errors = self._validate("999")
         self.assertFalse(ok)
         self.assertIn("nodeId", errors)
@@ -177,6 +178,246 @@ class TestValidateDeviceConfigUi(unittest.TestCase):
         ok, _, errors = self._validate("")
         self.assertFalse(ok)
         self.assertIn("nodeId", errors)
+
+    def test_valid_endpoint_passes(self):
+        ok, _, errors = self._validate("50", endpoint_str="2")
+        self.assertTrue(ok)
+        self.assertNotIn("endpointId", errors)
+
+    def test_invalid_endpoint_rejected(self):
+        ok, _, errors = self._validate("50", endpoint_str="abc")
+        self.assertFalse(ok)
+        self.assertIn("endpointId", errors)
+
+    def test_blank_endpoint_passes(self):
+        ok, _, errors = self._validate("50", endpoint_str="")
+        self.assertTrue(ok)
+        self.assertNotIn("endpointId", errors)
+
+
+# ==============================================================================
+# Tests: Multi-channel encapsulation routing
+# ==============================================================================
+
+class TestMultiChannelRouting(unittest.TestCase):
+    """CC 0x60, CMD 0x0D — unwrap inner frame, optionally filter by endpoint."""
+
+    def setUp(self):
+        self.p = make_plugin(debug=True)
+
+    def _dev(self, endpoint_id=""):
+        return MockDevice(1, "Test", address="223",
+                          plugin_props={"sensorType": "temperature",
+                                        "endpointId": endpoint_id})
+
+    def _mc_wrap(self, src_ep, dst_ep, inner_bytes):
+        """Build a MULTI_CHANNEL_CMD_ENCAP frame."""
+        return [0x60, 0x0D, src_ep, dst_ep] + list(inner_bytes)
+
+    def test_mc_encap_unwraps_and_routes(self):
+        """Wrapped temperature report is unwrapped and processed correctly."""
+        # 21.5 degC inner frame
+        pss = (1 << 5) | (0 << 3) | 2   # precision=1, scale=0, size=2
+        inner = [0x31, 0x05, 0x01, pss] + list(struct.pack(">h", 215))
+        raw = self._mc_wrap(1, 2, inner)
+        dev = self._dev(endpoint_id="")   # accept all
+        self.p._route_zwave_report(dev, 223, raw[0], raw[1], raw, "")
+        self.assertIn("temperature", dev.state_writes)
+        self.assertAlmostEqual(dev.state_writes["temperature"]["value"], 21.5)
+
+    def test_mc_endpoint_filter_match_processes(self):
+        """Report with dst_ep matching configured endpoint is processed."""
+        pss = (1 << 5) | (0 << 3) | 2
+        inner = [0x31, 0x05, 0x01, pss] + list(struct.pack(">h", 215))
+        raw = self._mc_wrap(0, 2, inner)
+        dev = self._dev(endpoint_id="2")
+        self.p._route_zwave_report(dev, 223, raw[0], raw[1], raw, "")
+        self.assertIn("temperature", dev.state_writes)
+
+    def test_mc_endpoint_filter_mismatch_skips(self):
+        """Report with dst_ep NOT matching configured endpoint is silently skipped."""
+        pss = (1 << 5) | (0 << 3) | 2
+        inner = [0x31, 0x05, 0x01, pss] + list(struct.pack(">h", 215))
+        raw = self._mc_wrap(0, 3, inner)   # dst_ep=3
+        dev = self._dev(endpoint_id="2")   # want ep 2
+        self.p._route_zwave_report(dev, 223, raw[0], raw[1], raw, "")
+        self.assertNotIn("temperature", dev.state_writes)
+
+    def test_mc_endpoint_zero_accepts_all(self):
+        """endpointId=0 means accept all endpoints."""
+        pss = (1 << 5) | (0 << 3) | 2
+        inner = [0x31, 0x05, 0x01, pss] + list(struct.pack(">h", 215))
+        raw = self._mc_wrap(0, 5, inner)   # any dst_ep
+        dev = self._dev(endpoint_id="0")
+        self.p._route_zwave_report(dev, 223, raw[0], raw[1], raw, "")
+        self.assertIn("temperature", dev.state_writes)
+
+    def test_mc_too_short_silently_dropped(self):
+        """MC frame with fewer than 6 bytes is dropped without crashing."""
+        raw = [0x60, 0x0D, 0x01]   # truncated
+        dev = self._dev()
+        self.p._route_zwave_report(dev, 223, raw[0], raw[1], raw, "")
+        self.assertEqual(dev.state_writes, {})
+
+
+# ==============================================================================
+# Tests: Temperature unit conversion
+# ==============================================================================
+
+class TestTemperatureUnit(unittest.TestCase):
+    """Verify degC<->degF conversion in _handle_multilevel."""
+
+    def _dev(self):
+        return MockDevice(1, "Temp Test", address="50",
+                          plugin_props={"sensorType": "temperature"})
+
+    def _raw_temp(self, raw_int, precision, scale):
+        pss = (precision << 5) | (scale << 3) | 2   # size=2
+        return [0x31, 0x05, 0x01, pss] + list(struct.pack(">h", raw_int))
+
+    def test_degC_reported_pref_degC_no_conversion(self):
+        """21.5 degC reported, pref=degC -> stored as 21.5 degC."""
+        p   = make_plugin(temp_unit="degC")
+        dev = self._dev()
+        p._handle_multilevel(dev, self._raw_temp(215, 1, 0))
+        self.assertAlmostEqual(dev.state_writes["temperature"]["value"], 21.5, places=1)
+        self.assertIn("degC", dev.state_writes["temperature"]["uiValue"])
+
+    def test_degF_reported_pref_degF_no_conversion(self):
+        """70 degF reported, pref=degF -> stored as 70.0 degF."""
+        p   = make_plugin(temp_unit="degF")
+        dev = self._dev()
+        p._handle_multilevel(dev, self._raw_temp(70, 0, 1))   # scale=1 = degF
+        self.assertAlmostEqual(dev.state_writes["temperature"]["value"], 70.0, places=1)
+        self.assertIn("degF", dev.state_writes["temperature"]["uiValue"])
+
+    def test_degC_reported_pref_degF_converts(self):
+        """21.5 degC reported, pref=degF -> stored as 70.7 degF."""
+        p   = make_plugin(temp_unit="degF")
+        dev = self._dev()
+        p._handle_multilevel(dev, self._raw_temp(215, 1, 0))
+        self.assertAlmostEqual(dev.state_writes["temperature"]["value"], 70.7, places=1)
+        self.assertIn("degF", dev.state_writes["temperature"]["uiValue"])
+
+    def test_degF_reported_pref_degC_converts(self):
+        """70 degF reported, pref=degC -> stored as approx 21.1 degC."""
+        p   = make_plugin(temp_unit="degC")
+        dev = self._dev()
+        p._handle_multilevel(dev, self._raw_temp(70, 0, 1))   # scale=1 = degF
+        self.assertAlmostEqual(dev.state_writes["temperature"]["value"], 21.1, places=1)
+        self.assertIn("degC", dev.state_writes["temperature"]["uiValue"])
+
+
+# ==============================================================================
+# Tests: Wake-up handling
+# ==============================================================================
+
+class TestHandleWakeUp(unittest.TestCase):
+    """CC=0x84 — notification and interval report."""
+
+    def setUp(self):
+        self.p = make_plugin(debug=True)
+
+    def _dev(self):
+        return MockDevice(1, "Battery Sensor", address="10",
+                          plugin_props={"sensorType": "motion"})
+
+    def test_wake_up_notification_touches_device(self):
+        """WAKE_UP_NOTIFICATION (0x84, 0x07) updates lastUpdate."""
+        dev = self._dev()
+        result = self.p._handle_wake_up(dev, 0x07, [0x84, 0x07])
+        self.assertTrue(result)
+        self.assertIn("lastUpdate", dev.state_writes)
+
+    def test_wake_up_interval_report_stores_state(self):
+        """WAKE_UP_INTERVAL_REPORT (0x84, 0x06) stores interval in seconds."""
+        # 300 seconds = 0x00 0x01 0x2C
+        dev = self._dev()
+        result = self.p._handle_wake_up(dev, 0x06, [0x84, 0x06, 0x00, 0x01, 0x2C, 0x01])
+        self.assertTrue(result)
+        self.assertEqual(dev.state_writes["wakeUpInterval"]["value"], 300)
+
+    def test_wake_up_interval_too_short_returns_false(self):
+        """Truncated INTERVAL_REPORT (< 5 bytes) returns False."""
+        dev = self._dev()
+        result = self.p._handle_wake_up(dev, 0x06, [0x84, 0x06, 0x00])
+        self.assertFalse(result)
+
+    def test_wake_up_unknown_cmd_returns_false(self):
+        """Unknown WAKE_UP sub-command returns False without crashing."""
+        dev = self._dev()
+        result = self.p._handle_wake_up(dev, 0xFF, [0x84, 0xFF])
+        self.assertFalse(result)
+
+
+# ==============================================================================
+# Tests: Stale device detection
+# ==============================================================================
+
+class TestStaleDetection(unittest.TestCase):
+
+    def setUp(self):
+        self.p        = make_plugin()
+        self.dev_dict = MockDevicesDict()
+        _indigo.devices = self.dev_dict
+
+    def _dev(self, last_update="", dev_id=1):
+        return MockDevice(dev_id, f"Sensor{dev_id}", address="50",
+                          states={"lastUpdate": last_update},
+                          plugin_props={"sensorType": "motion"})
+
+    def _ts(self, hours_ago=0):
+        dt = datetime.now() - timedelta(hours=hours_ago)
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    def test_no_last_update_not_flagged(self):
+        """Device with no lastUpdate is skipped — cannot determine staleness."""
+        dev = self._dev(last_update="")
+        self.dev_dict[dev.id] = dev
+        self.p._check_stale_devices()
+        self.assertNotIn("deviceOnline", dev.state_writes)
+        self.assertEqual(len(self.p.stale_device_ids), 0)
+
+    def test_fresh_device_not_stale(self):
+        """Device updated 1 hour ago (threshold 24h) is not flagged."""
+        dev = self._dev(last_update=self._ts(hours_ago=1))
+        self.dev_dict[dev.id] = dev
+        self.p._check_stale_devices()
+        self.assertNotIn("deviceOnline", dev.state_writes)
+        self.assertNotIn(dev.id, self.p.stale_device_ids)
+
+    def test_stale_device_flagged(self):
+        """Device last updated 30h ago (threshold 24h) is flagged offline."""
+        dev = self._dev(last_update=self._ts(hours_ago=30))
+        self.dev_dict[dev.id] = dev
+        self.p._check_stale_devices()
+        self.assertFalse(dev.state_writes["deviceOnline"]["value"])
+        self.assertIn(dev.id, self.p.stale_device_ids)
+        self.p.logger.warning.assert_called()
+
+    def test_stale_not_repeated(self):
+        """Already-flagged device does not generate a second warning."""
+        dev = self._dev(last_update=self._ts(hours_ago=30))
+        self.dev_dict[dev.id] = dev
+        self.p.stale_device_ids.add(dev.id)   # pre-flag it
+        self.p._check_stale_devices()
+        self.p.logger.warning.assert_not_called()
+
+    def test_stale_detection_disabled(self):
+        """With stale_enabled=False, no devices are checked."""
+        self.p.stale_enabled = False
+        dev = self._dev(last_update=self._ts(hours_ago=100))
+        self.dev_dict[dev.id] = dev
+        self.p._check_stale_devices()
+        self.assertNotIn("deviceOnline", dev.state_writes)
+
+    def test_touch_clears_stale_flag(self):
+        """_touch() on a flagged device clears the flag and sets deviceOnline=True."""
+        dev = self._dev()
+        self.p.stale_device_ids.add(dev.id)
+        self.p._touch(dev)
+        self.assertNotIn(dev.id, self.p.stale_device_ids)
+        self.assertTrue(dev.state_writes["deviceOnline"]["value"])
 
 
 # ==============================================================================
@@ -211,11 +452,12 @@ class TestHandleMultilevel(unittest.TestCase):
         self.assertEqual(dev.state_writes["temperature"]["uiValue"], "21.5 degC")
 
     def test_temperature_70_degF(self):
-        """70 degF: sensor=0x01, precision=0, scale=1(F), size=1, raw_int=70"""
+        """70 degF reported, pref=degF -> stored as 70.0 degF (no conversion)."""
+        p   = make_plugin(debug=True, temp_unit="degF")
         pss = self._prec_scale_size(0, 1, 1)
         raw = [0x31, 0x05, 0x01, pss, 70]
         dev = self._dev("temperature")
-        self.assertTrue(self.p._handle_multilevel(dev, raw))
+        self.assertTrue(p._handle_multilevel(dev, raw))
         self.assertAlmostEqual(dev.state_writes["temperature"]["value"], 70.0)
         self.assertIn("degF", dev.state_writes["temperature"]["uiValue"])
 

@@ -6,11 +6,11 @@
 #              Parses raw Z-Wave command bytes via zwaveCommandReceived().
 # Author:      CliveS & Claude Sonnet 4.6
 # Date:        21-03-2026
-# Version:     2.2
+# Version:     3.0
 
 import indigo
 import struct
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 # ==============================================================================
@@ -23,6 +23,7 @@ CC_SWITCH_MULTILEVEL    = 0x26
 CC_SENSOR_BINARY        = 0x30
 CC_SENSOR_MULTILEVEL    = 0x31
 CC_METER                = 0x32
+CC_MULTI_CHANNEL        = 0x60   # Multi-channel / endpoint encapsulation
 CC_DOOR_LOCK            = 0x62
 CC_NOTIFICATION         = 0x71   # replaces ALARM (0x9C) in v4+
 CC_BATTERY              = 0x80
@@ -38,6 +39,8 @@ CMD_METER_REPORT                = 0x02
 CMD_NOTIFICATION_REPORT         = 0x05
 CMD_BATTERY_REPORT              = 0x03
 CMD_WAKE_UP_NOTIFICATION        = 0x07
+CMD_WAKE_UP_INTERVAL_REPORT     = 0x06
+CMD_MULTI_CHANNEL_ENCAP         = 0x0D
 
 # ==============================================================================
 # SENSOR_MULTILEVEL (0x31) sensor type lookup
@@ -103,9 +106,7 @@ METER_ELECTRIC_SCALES = {
     1: ("kwh",   "kVAh"),
     2: ("watts", "W"),
     # scale=3: pulse count (no useful state to write)
-    # scale=4/5 (V/A) require METER_REPORT v3 extended scale (Scale2 byte) —
-    # not yet implemented; the 2-bit mask (prec_scale_size >> 3) & 0x03
-    # can only produce 0-3, so those entries would never be reached here.
+    # scale=4/5 (V/A) require METER_REPORT v3 extended scale — not yet implemented
 }
 
 
@@ -117,18 +118,23 @@ class Plugin(indigo.PluginBase):
 
     def __init__(self, plugin_id, display_name, version, prefs):
         super().__init__(plugin_id, display_name, version, prefs)
-        self.debug        = prefs.get("showDebugInfo",    False)
-        self.log_unknown  = prefs.get("logUnknownReports", True)
+        self.debug          = prefs.get("showDebugInfo",         False)
+        self.log_unknown    = prefs.get("logUnknownReports",     True)
+        self.temp_unit      = prefs.get("tempUnit",              "degC")
+        self.stale_enabled  = prefs.get("enableStaleDetection",  True)
+        self.stale_hours    = int(prefs.get("staleThresholdHours", 24))
         # Maps Z-Wave node_id (int) -> list of Indigo device_ids (int)
-        # One physical Z-Wave node can back multiple plugin devices (motion, temp, lux…)
-        self.node_to_device: dict[int, list[int]] = {}
+        # One physical Z-Wave node can back multiple plugin devices (motion, temp, lux...)
+        self.node_to_device:   dict[int, list[int]] = {}
+        # Set of device IDs currently flagged as stale (avoids repeated log warnings)
+        self.stale_device_ids: set[int] = set()
 
     # ==========================================================================
     # Plugin lifecycle
     # ==========================================================================
 
     def startup(self):
-        self.logger.info("Universal Z-Wave Sensor plugin starting v2.2")
+        self.logger.info("Universal Z-Wave Sensor plugin starting v3.0")
         self._rebuild_node_map()
         nodes = sorted(self.node_to_device.keys())
         self.logger.info(f"  Monitoring {len(nodes)} node(s): {nodes}")
@@ -139,17 +145,25 @@ class Plugin(indigo.PluginBase):
         self.logger.info("Universal Z-Wave Sensor plugin stopping")
 
     def runConcurrentThread(self):
+        """60-second tick — checks all plugin devices for stale (silent) condition."""
         try:
             while True:
+                self._check_stale_devices()
                 self.sleep(60)
         except self.StopThread:
             pass
 
     def closedPrefsConfigUi(self, values_dict, user_cancelled):
         if not user_cancelled:
-            self.debug       = values_dict.get("showDebugInfo",    False)
-            self.log_unknown = values_dict.get("logUnknownReports", True)
-            self.logger.info(f"Prefs updated: debug={self.debug} log_unknown={self.log_unknown}")
+            self.debug         = values_dict.get("showDebugInfo",        False)
+            self.log_unknown   = values_dict.get("logUnknownReports",    True)
+            self.temp_unit     = values_dict.get("tempUnit",             "degC")
+            self.stale_enabled = values_dict.get("enableStaleDetection", True)
+            self.stale_hours   = int(values_dict.get("staleThresholdHours", 24))
+            self.logger.info(
+                f"Prefs updated: debug={self.debug} log_unknown={self.log_unknown} "
+                f"temp_unit={self.temp_unit} stale={self.stale_enabled}/{self.stale_hours}h"
+            )
 
     # ==========================================================================
     # Device lifecycle
@@ -157,7 +171,6 @@ class Plugin(indigo.PluginBase):
 
     def deviceStartComm(self, device):
         self.logger.info(f"Starting: '{device.name}'")
-        # Ensure device picks up any new states added since it was created
         device.stateListOrDisplayStateIdChanged()
         node_id = self._get_node_id(device)
         if node_id:
@@ -167,7 +180,9 @@ class Plugin(indigo.PluginBase):
                 self.node_to_device[node_id].append(device.id)
             self.logger.info(f"  Now listening on Z-Wave Node {node_id}")
         else:
-            self.logger.error(f"  No valid Node ID configured for '{device.name}' — edit device and set it")
+            self.logger.error(
+                f"  No valid Node ID configured for '{device.name}' — edit device and set it"
+            )
 
     def deviceStopComm(self, device):
         node_id = self._get_node_id(device)
@@ -176,7 +191,6 @@ class Plugin(indigo.PluginBase):
                 self.node_to_device[node_id].remove(device.id)
             except ValueError:
                 pass
-            # Only remove the node entry when no plugin devices remain on it
             if not self.node_to_device[node_id]:
                 del self.node_to_device[node_id]
             self.logger.info(f"Stopped listening on Node {node_id}")
@@ -191,8 +205,7 @@ class Plugin(indigo.PluginBase):
 
             # Warn if Indigo already has a native device on this node.
             # zwaveCommandReceived() only fires for nodes this plugin owns —
-            # if Indigo already owns the node, raw bytes will never arrive here
-            # and this plugin device will never update.
+            # if Indigo already owns the node, raw bytes will never arrive here.
             node_id = int(node_str)
             known_names = [
                 dev.name for dev in indigo.devices
@@ -211,6 +224,11 @@ class Plugin(indigo.PluginBase):
                     f"Use the existing Indigo device(s) directly instead."
                 )
 
+        # Validate optional endpoint ID
+        ep_str = values_dict.get("endpointId", "").strip()
+        if ep_str and (not ep_str.isdigit() or not (0 <= int(ep_str) <= 255)):
+            errors["endpointId"] = "Endpoint must be blank (all endpoints) or a number 0-255"
+
         return (len(errors) == 0), values_dict, errors
 
     # ==========================================================================
@@ -224,12 +242,8 @@ class Plugin(indigo.PluginBase):
         Called by Indigo for every incoming Z-Wave command directed at the
         controller. Receives reports from ALL nodes — we filter to our own.
 
-        A single node can back multiple plugin devices (motion, temp, lux…);
+        A single node can back multiple plugin devices (motion, temp, lux...);
         we iterate over all of them and route the report to each.
-
-        IMPORTANT: cmd key names can vary by Indigo version.
-        Enable debug logging in plugin preferences to see the full cmd dict
-        on first run. Adjust _extract_node_and_bytes() if keys differ.
         """
         if self.debug:
             self.logger.debug(f"zwaveCommandReceived raw cmd: {dict(cmd)}")
@@ -265,6 +279,45 @@ class Plugin(indigo.PluginBase):
 
     def _route_zwave_report(self, device, node_id, cmd_class, cmd_func, raw, hex_str):
         """Dispatch one Z-Wave report to the correct parser for a single plugin device."""
+
+        # ------------------------------------------------------------------
+        # Multi-channel encapsulation (CC 0x60, CMD 0x0D)
+        # Frame: [0x60, 0x0D, src_endpoint, dst_endpoint, cc, func, payload...]
+        # Unwrap the inner frame, then optionally filter by endpoint.
+        # ------------------------------------------------------------------
+        if cmd_class == CC_MULTI_CHANNEL and cmd_func == CMD_MULTI_CHANNEL_ENCAP:
+            if len(raw) < 6:
+                return
+            src_ep    = raw[2]
+            dst_ep    = raw[3]
+            raw       = raw[4:]            # inner frame: [cc, func, payload...]
+            cmd_class = raw[0]
+            cmd_func  = raw[1]
+            hex_str   = " ".join(f"{b:02X}" for b in raw)
+
+            # Per-device endpoint filter — blank or "0" means accept all endpoints
+            ep_str = device.pluginProps.get("endpointId", "").strip()
+            if ep_str and ep_str != "0":
+                try:
+                    if dst_ep != int(ep_str):
+                        if self.debug:
+                            self.logger.debug(
+                                f"{device.name}: MC dst_ep={dst_ep} "
+                                f"(want ep {ep_str}) — skipped"
+                            )
+                        return
+                except ValueError:
+                    pass
+
+            if self.debug:
+                self.logger.debug(
+                    f"{device.name}: Multi-channel src_ep={src_ep} dst_ep={dst_ep} "
+                    f"-> CC=0x{cmd_class:02X} [{hex_str}]"
+                )
+
+        # ------------------------------------------------------------------
+        # Dispatch to parser
+        # ------------------------------------------------------------------
         handled = False
 
         if   cmd_class == CC_SENSOR_MULTILEVEL  and cmd_func == CMD_SENSOR_MULTILEVEL_REPORT:
@@ -291,9 +344,8 @@ class Plugin(indigo.PluginBase):
         elif cmd_class == CC_BASIC              and cmd_func == CMD_BASIC_REPORT:
             handled = self._handle_basic(device, raw)
 
-        elif cmd_class == CC_WAKE_UP            and cmd_func == CMD_WAKE_UP_NOTIFICATION:
-            self.logger.debug(f"{device.name}: Wake-up notification")
-            handled = True
+        elif cmd_class == CC_WAKE_UP:
+            handled = self._handle_wake_up(device, cmd_func, raw)
 
         if not handled and self.log_unknown:
             self.logger.info(
@@ -314,6 +366,7 @@ class Plugin(indigo.PluginBase):
           prec_scale_size:  bits [7:5]=precision  [4:3]=scale  [2:0]=size
           value_bytes:      signed big-endian, 1/2/4 bytes
           actual_value = raw_int / 10^precision
+        Temperature is converted to the user's preferred unit (degC/degF).
         """
         if len(raw) < 5:
             return False
@@ -348,16 +401,23 @@ class Plugin(indigo.PluginBase):
 
         state_key, default_unit = SENSOR_TYPES[sensor_type]
 
-        # Resolve unit from scale byte
+        # Resolve unit; apply temperature unit preference with conversion if needed
         if sensor_type == 0x01:   # temperature
-            unit = "degC" if scale == 0 else "degF"
+            reported_unit = "degC" if scale == 0 else "degF"
+            if reported_unit != self.temp_unit:
+                if self.temp_unit == "degF":
+                    value = value * 9.0 / 5.0 + 32.0
+                else:   # degC
+                    value = (value - 32.0) * 5.0 / 9.0
+                precision = max(precision, 1)   # ensure at least 1dp after conversion
+            unit = self.temp_unit
         elif sensor_type == 0x03:  # luminance
             unit = "%" if scale == 0 else "lux"
         else:
             unit = default_unit
 
-        dp       = max(0, precision)
-        ui_str   = f"{value:.{dp}f} {unit}".strip()
+        dp     = max(0, precision)
+        ui_str = f"{value:.{dp}f} {unit}".strip()
         self.logger.info(f"{device.name}: {state_key} = {ui_str}")
         device.updateStateOnServer(state_key, value=round(value, dp), uiValue=ui_str)
 
@@ -403,8 +463,8 @@ class Plugin(indigo.PluginBase):
         label = on_label if is_active else off_label
 
         self.logger.info(f"{device.name}: {state_key} = {label}")
-        device.updateStateOnServer(state_key,      value=is_active, uiValue=label)
-        device.updateStateOnServer("onOffState",   value=is_active)
+        device.updateStateOnServer(state_key,       value=is_active, uiValue=label)
+        device.updateStateOnServer("onOffState",    value=is_active)
         device.updateStateOnServer("displayStatus", value=label)
         self._touch(device)
         return True
@@ -622,10 +682,10 @@ class Plugin(indigo.PluginBase):
         if len(raw) < 3:
             return False
 
-        raw_val      = raw[2]
-        level        = 99 if raw_val == 0xFF else min(raw_val, 99)
-        is_on        = level > 0
-        display_str  = f"{level}%" if is_on else "off"
+        raw_val     = raw[2]
+        level       = 99 if raw_val == 0xFF else min(raw_val, 99)
+        is_on       = level > 0
+        display_str = f"{level}%" if is_on else "off"
         self.logger.info(f"{device.name}: Dim level = {level}%")
         device.updateStateOnServer("dimLevel",      value=level, uiValue=f"{level}%")
         device.updateStateOnServer("switchState",   value=is_on)
@@ -653,6 +713,154 @@ class Plugin(indigo.PluginBase):
         self._touch(device)
         return True
 
+    def _handle_wake_up(self, device, cmd_func, raw) -> bool:
+        """
+        WAKE_UP command class (CC=0x84)
+        CMD 0x07  WAKE_UP_NOTIFICATION      [0x84, 0x07]
+                  Device woke up and is ready to receive queued commands.
+        CMD 0x06  WAKE_UP_INTERVAL_REPORT   [0x84, 0x06, b1, b2, b3, node_id]
+                  interval_s = (b1 << 16) | (b2 << 8) | b3
+        """
+        if cmd_func == CMD_WAKE_UP_NOTIFICATION:
+            self.logger.debug(f"{device.name}: Wake-up notification (device is awake)")
+            self._touch(device)
+            return True
+
+        if cmd_func == CMD_WAKE_UP_INTERVAL_REPORT:
+            if len(raw) < 5:
+                return False
+            interval = (raw[2] << 16) | (raw[3] << 8) | raw[4]
+            minutes  = interval // 60
+            seconds  = interval % 60
+            ui_str   = f"{minutes}m {seconds}s" if minutes else f"{interval}s"
+            self.logger.info(f"{device.name}: Wake-up interval = {interval}s ({ui_str})")
+            device.updateStateOnServer("wakeUpInterval", value=interval, uiValue=ui_str)
+            self._touch(device)
+            return True
+
+        return False
+
+    # ==========================================================================
+    # Stale device detection
+    # ==========================================================================
+
+    def _check_stale_devices(self):
+        """
+        Called every 60 seconds by runConcurrentThread.
+        A device is stale if lastUpdate is older than stale_hours.
+        Logs a warning the first time each device goes stale and sets
+        deviceOnline=False.  _touch() clears the stale flag and restores
+        deviceOnline=True when any report arrives.
+        """
+        if not self.stale_enabled:
+            return
+
+        threshold = timedelta(hours=self.stale_hours)
+        now       = datetime.now()
+
+        for dev in indigo.devices.iter("self"):
+            last_str = dev.states.get("lastUpdate", "")
+            if not last_str:
+                continue   # never had a report — cannot determine staleness
+
+            try:
+                last_dt = datetime.strptime(last_str, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                continue
+
+            age      = now - last_dt
+            is_stale = age > threshold
+
+            if is_stale and dev.id not in self.stale_device_ids:
+                # Newly stale — log once and mark offline
+                self.stale_device_ids.add(dev.id)
+                hours_ago = age.total_seconds() / 3600
+                self.logger.warning(
+                    f"{dev.name}: No report for {hours_ago:.1f}h "
+                    f"(threshold {self.stale_hours}h) — may be offline or out of range"
+                )
+                dev.updateStateOnServer("deviceOnline", value=False, uiValue="offline")
+
+            elif not is_stale and dev.id in self.stale_device_ids:
+                # Threshold was raised while device was flagged — clear without logging
+                self.stale_device_ids.discard(dev.id)
+                dev.updateStateOnServer("deviceOnline", value=True, uiValue="online")
+
+    # ==========================================================================
+    # Menu: Simulate Z-Wave Report
+    # ==========================================================================
+
+    def get_sim_device_list(self, filter="", values_dict=None, type_id="", target_id=0):
+        """ConfigUI callback — returns all plugin devices for the simulate dialog."""
+        result = []
+        for dev in indigo.devices.iter("self"):
+            node_id = self._get_node_id(dev)
+            if node_id:
+                result.append((str(dev.id), f"{dev.name}  (Node {node_id})"))
+        return result if result else [("none", "-- No plugin devices configured --")]
+
+    def simulateReport(self, values_dict, type_id):
+        """
+        Menu: Simulate Z-Wave Report
+        Feeds user-supplied hex bytes directly into _route_zwave_report() for
+        the selected plugin device, exactly as if real hardware had sent them.
+        Returns values_dict to keep the dialog open for further testing.
+
+        Example byte sequences:
+          Temperature 21.5 degC:   31 05 01 22 00 D7
+          Motion detected (NOTIF): 71 05 00 00 00 07 FF 07 00
+          Motion cleared  (NOTIF): 71 05 00 00 00 07 00 08 00
+          Battery 85%:             80 03 55
+          Wake-up interval 5min:   84 06 00 01 2C 6F
+          Wake-up notification:    84 07
+        """
+        try:
+            dev_id_str = str(values_dict.get("deviceId", "")).strip()
+            hex_input  = str(values_dict.get("hexBytes",  "")).strip()
+
+            if not dev_id_str or dev_id_str == "none" or not hex_input:
+                self.logger.error("Simulate: select a device and enter hex bytes")
+                return values_dict
+
+            try:
+                device = indigo.devices[int(dev_id_str)]
+            except (KeyError, ValueError):
+                self.logger.error(f"Simulate: device id '{dev_id_str}' not found")
+                return values_dict
+
+            node_id = self._get_node_id(device)
+            if not node_id:
+                self.logger.error("Simulate: device has no valid node ID")
+                return values_dict
+
+            try:
+                raw = [int(b, 16) for b in hex_input.split()]
+            except ValueError as e:
+                self.logger.error(
+                    f"Simulate: invalid hex — {e}  "
+                    f"(expected space-separated bytes, e.g. 31 05 01 22 00 D7)"
+                )
+                return values_dict
+
+            if len(raw) < 2:
+                self.logger.error("Simulate: need at least 2 bytes (command class + command)")
+                return values_dict
+
+            cmd_class = raw[0]
+            cmd_func  = raw[1]
+            hex_str   = " ".join(f"{b:02X}" for b in raw)
+
+            self.logger.info(
+                f"Simulate: -> '{device.name}' [Node {node_id}] "
+                f"CC=0x{cmd_class:02X} func=0x{cmd_func:02X} [{hex_str}]"
+            )
+            self._route_zwave_report(device, node_id, cmd_class, cmd_func, raw, hex_str)
+
+        except Exception as e:
+            self.logger.error(f"Simulate: unexpected error — {e}", exc_info=True)
+
+        return values_dict   # keeps the dialog open for further testing
+
     # ==========================================================================
     # Helpers
     # ==========================================================================
@@ -663,12 +871,10 @@ class Plugin(indigo.PluginBase):
         Key names vary between Indigo versions — tries common variants.
         If neither works, enable debug logging and inspect the logged dict.
         """
-        # Try known key names for node ID
         node_id = cmd.get("nodeId",
                   cmd.get("sourceNodeId",
                   cmd.get("node_id", None)))
 
-        # Try known key names for byte list
         raw = list(cmd.get("bytes",
                cmd.get("cmdBytes",
                cmd.get("rawBytes", []))))
@@ -713,93 +919,12 @@ class Plugin(indigo.PluginBase):
                 else indigo.kStateImageSel.SensorOff
             )
 
-    # ==========================================================================
-    # Menu: Simulate Z-Wave Report
-    # ==========================================================================
-
-    def get_sim_device_list(self, filter="", values_dict=None, type_id="", target_id=0):
-        """ConfigUI callback — returns all plugin devices for the simulate dialog."""
-        result = []
-        for dev in indigo.devices.iter("self"):
-            node_id = self._get_node_id(dev)
-            if node_id:
-                result.append((str(dev.id), f"{dev.name}  (Node {node_id})"))
-        return result if result else [("none", "-- No plugin devices configured --")]
-
-    def simulateReport(self, values_dict, type_id):
-        """
-        Menu: Simulate Z-Wave Report
-        Feeds user-supplied hex bytes directly into _route_zwave_report() for
-        the selected plugin device, exactly as if real hardware had sent them.
-        Use this to verify the plugin is working without needing unknown hardware.
-
-        Example byte sequences:
-          Temperature 21.5 degC:   31 05 01 22 00 D7
-          Motion detected (NOTIF): 71 05 00 00 00 07 FF 07 00
-          Battery 85%:             80 03 55
-        """
-        try:
-            self.logger.info(f"Simulate: dialog closed — values={dict(values_dict)}")
-
-            dev_id_str = str(values_dict.get("deviceId", "")).strip()
-            hex_input  = str(values_dict.get("hexBytes",  "")).strip()
-
-            if not dev_id_str or dev_id_str == "none" or not hex_input:
-                self.logger.error("Simulate: select a device and enter hex bytes")
-                return False
-
-            try:
-                device = indigo.devices[int(dev_id_str)]
-            except (KeyError, ValueError):
-                self.logger.error(f"Simulate: device id '{dev_id_str}' not found")
-                return False
-
-            node_id = self._get_node_id(device)
-            if not node_id:
-                self.logger.error("Simulate: device has no valid node ID")
-                return False
-
-            try:
-                raw = [int(b, 16) for b in hex_input.split()]
-            except ValueError as e:
-                self.logger.error(
-                    f"Simulate: invalid hex — {e}  "
-                    f"(expected space-separated bytes, e.g. 31 05 01 22 00 D7)"
-                )
-                return False
-
-            if len(raw) < 2:
-                self.logger.error("Simulate: need at least 2 bytes (command class + command)")
-                return False
-
-            cmd_class = raw[0]
-            cmd_func  = raw[1]
-            hex_str   = " ".join(f"{b:02X}" for b in raw)
-
-            self.logger.info(
-                f"Simulate: -> '{device.name}' [Node {node_id}] "
-                f"CC=0x{cmd_class:02X} func=0x{cmd_func:02X} [{hex_str}]"
-            )
-            self._route_zwave_report(device, node_id, cmd_class, cmd_func, raw, hex_str)
-            return True
-
-        except Exception as e:
-            self.logger.error(f"Simulate: unexpected error — {e}", exc_info=True)
-            return False
-
-    # ==========================================================================
-    # Helpers
-    # ==========================================================================
-
     def _get_node_id(self, device) -> int | None:
         node_str = device.pluginProps.get("nodeId", "").strip()
         return int(node_str) if node_str.isdigit() else None
 
     def _rebuild_node_map(self):
-        """Rebuild node_id -> [device_id, ...] map from all plugin devices.
-        A single node can have multiple plugin devices (motion, temp, lux etc.)
-        so the map stores a list of device IDs per node.
-        """
+        """Rebuild node_id -> [device_id, ...] map from all plugin devices."""
         self.node_to_device = {}
         for device in indigo.devices.iter("self"):
             node_id = self._get_node_id(device)
@@ -809,6 +934,10 @@ class Plugin(indigo.PluginBase):
                     self.node_to_device[node_id].append(device.id)
 
     def _touch(self, device):
-        """Update lastUpdate state with current timestamp."""
+        """Update lastUpdate, mark device online, and clear any stale flag."""
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         device.updateStateOnServer("lastUpdate", value=ts)
+        if device.id in self.stale_device_ids:
+            self.stale_device_ids.discard(device.id)
+            device.updateStateOnServer("deviceOnline", value=True, uiValue="online")
+            self.logger.info(f"{device.name}: Back online (report received)")

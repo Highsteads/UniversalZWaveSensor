@@ -12,8 +12,9 @@
                 <Label>Hex Bytes</Label>
                 <Description>Space-separated hex bytes, e.g.:  31 05 01 22 00 D7  (temperature 21.5 degC)</Description>
             </Field>
-            <Field id="sendButton" type="button" title="Send">
+            <Field id="sendButton" type="button">
                 <Label> </Label>
+                <Title>Send</Title>
                 <CallbackMethod>simulateReport</CallbackMethod>
             </Field>
         </ConfigUI>

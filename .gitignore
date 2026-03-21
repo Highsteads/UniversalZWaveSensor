@@ -1,11 +1,16 @@
-# Python cache
-Contents/Server Plugin/__pycache__/
-Contents/Server Plugin/*.pyc
-Contents/Server Plugin/*.pyo
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
 
 # macOS
 .DS_Store
-**/.DS_Store
+.AppleDouble
+.LSOverride
 
-# Indigo compiled files
-*.indigoPlugin.zip
+# Indigo plugin — personal config (copy secrets_example.py if present)
+Contents/Server Plugin/secrets.py
+
+# Personal session notes
+CLAUDE.md
+*.personal.md

@@ -20,6 +20,10 @@
                     <Option value="generic">Generic (on/off)</Option>
                 </List>
             </Field>
+            <Field id="endpointId" type="textfield" defaultValue="">
+                <Label>Endpoint ID</Label>
+                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...) this device should listen on. Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
             <Field id="address" type="textfield" hidden="true">
                 <Label>Address</Label>
             </Field>
@@ -150,6 +154,16 @@
                 <ValueType>String</ValueType>
                 <TriggerLabel>Last update time changes</TriggerLabel>
                 <ControlPageLabel>Last Updated</ControlPageLabel>
+            </State>
+            <State id="deviceOnline">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Device online state changes</TriggerLabel>
+                <ControlPageLabel>Online</ControlPageLabel>
+            </State>
+            <State id="wakeUpInterval">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Wake-up interval changes</TriggerLabel>
+                <ControlPageLabel>Wake-up Interval</ControlPageLabel>
             </State>
             <State id="rawLastReport">
                 <ValueType>String</ValueType>
