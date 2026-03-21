@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <MenuItems>
-    <MenuItem id="simulateReport" buttonTitle="Send">
+    <MenuItem id="simulateReportDialog">
         <Name>Simulate Z-Wave Report...</Name>
         <ConfigUI>
             <Field id="deviceId" type="menu" defaultValue="">
@@ -11,6 +11,10 @@
             <Field id="hexBytes" type="textfield" defaultValue="">
                 <Label>Hex Bytes</Label>
                 <Description>Space-separated hex bytes, e.g.:  31 05 01 22 00 D7  (temperature 21.5 degC)</Description>
+            </Field>
+            <Field id="sendButton" type="button" title="Send">
+                <Label> </Label>
+                <CallbackMethod>simulateReport</CallbackMethod>
             </Field>
         </ConfigUI>
     </MenuItem>
