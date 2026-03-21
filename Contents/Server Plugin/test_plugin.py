@@ -5,7 +5,7 @@
 #              Covers: _mirror_from_device (subscribeToChanges path),
 #                      all raw Z-Wave parsers (_handle_* methods),
 #                      deviceUpdated filtering, deviceStartComm initial sync.
-# Author:      Highsteads & Claude Sonnet 4.6
+# Author:      CliveS & Claude Sonnet 4.6
 # Date:        21-03-2026
 # Version:     1.0
 #

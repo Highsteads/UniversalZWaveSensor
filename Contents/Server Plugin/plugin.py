@@ -4,7 +4,7 @@
 # Description: Universal Z-Wave Sensor - mirrors states from any Indigo Z-Wave
 #              device into one unified plugin device. Uses subscribeToChanges()
 #              for known devices; Z-Wave device type ownership for unknown ones.
-# Author:      Highsteads & Claude Sonnet 4.6
+# Author:      CliveS & Claude Sonnet 4.6
 # Date:        21-03-2026
 # Version:     1.5
 
