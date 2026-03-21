@@ -1,0 +1,11 @@
+# Python cache
+Contents/Server Plugin/__pycache__/
+Contents/Server Plugin/*.pyc
+Contents/Server Plugin/*.pyo
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Indigo compiled files
+*.indigoPlugin.zip

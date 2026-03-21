@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Devices>
+    <Device type="custom" id="zwaveSensor">
+        <Name>Universal Z-Wave Sensor</Name>
+        <ConfigUI>
+            <Field id="nodeId" type="textfield">
+                <Label>Z-Wave Node ID</Label>
+                <Description>Node ID shown in Indigo Z-Wave device list (e.g. 223)</Description>
+            </Field>
+            <Field id="sensorType" type="menu" defaultValue="motion">
+                <Label>Sensor Type</Label>
+                <Description>Sets the icon and primary display value shown in the device list</Description>
+                <List>
+                    <Option value="motion">Motion Sensor</Option>
+                    <Option value="contact">Contact Sensor (door/window)</Option>
+                    <Option value="temperature">Temperature Sensor</Option>
+                    <Option value="humidity">Humidity Sensor</Option>
+                    <Option value="luminance">Luminance Sensor</Option>
+                    <Option value="energy">Energy Monitor (watts)</Option>
+                    <Option value="generic">Generic (on/off)</Option>
+                </List>
+            </Field>
+            <Field id="sourceDeviceId" type="menu" defaultValue="">
+                <Label>Source Indigo Device</Label>
+                <Description>Select the Indigo device to mirror from. Enter Node ID above first, then this list will show only devices on that node. Leave blank for unknown devices (Z-Wave raw path).</Description>
+                <List class="self" method="get_source_device_list" dynamicReload="true"/>
+            </Field>
+            <Field id="address" type="textfield" hidden="true">
+                <Label>Address</Label>
+            </Field>
+        </ConfigUI>
+        <States>
+            <!-- Environmental sensors (SENSOR_MULTILEVEL 0x31) -->
+            <State id="temperature">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Temperature changes</TriggerLabel>
+                <ControlPageLabel>Temperature</ControlPageLabel>
+            </State>
+            <State id="humidity">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Humidity changes</TriggerLabel>
+                <ControlPageLabel>Humidity %</ControlPageLabel>
+            </State>
+            <State id="luminance">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Luminance changes</TriggerLabel>
+                <ControlPageLabel>Luminance (lux)</ControlPageLabel>
+            </State>
+            <State id="pressure">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Pressure changes</TriggerLabel>
+                <ControlPageLabel>Pressure (kPa)</ControlPageLabel>
+            </State>
+            <State id="co2Level">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>CO2 level changes</TriggerLabel>
+                <ControlPageLabel>CO2 (ppm)</ControlPageLabel>
+            </State>
+            <State id="uvIndex">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>UV index changes</TriggerLabel>
+                <ControlPageLabel>UV Index</ControlPageLabel>
+            </State>
+            <State id="noise">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Noise level changes</TriggerLabel>
+                <ControlPageLabel>Noise (dB)</ControlPageLabel>
+            </State>
+
+            <!-- Primary display state — String so Indigo renders it in device list -->
+            <State id="displayStatus">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Status changes</TriggerLabel>
+                <ControlPageLabel>Status</ControlPageLabel>
+            </State>
+
+            <!-- Binary sensors (SENSOR_BINARY 0x30 / NOTIFICATION 0x71) -->
+            <State id="onOffState">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Primary state changes</TriggerLabel>
+                <ControlPageLabel>Active</ControlPageLabel>
+            </State>
+            <State id="motion">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Motion detected or cleared</TriggerLabel>
+                <ControlPageLabel>Motion</ControlPageLabel>
+            </State>
+            <State id="contact">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Contact state changes</TriggerLabel>
+                <ControlPageLabel>Door/Window</ControlPageLabel>
+            </State>
+            <State id="waterLeak">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Water leak detected or cleared</TriggerLabel>
+                <ControlPageLabel>Water Leak</ControlPageLabel>
+            </State>
+            <State id="smoke">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Smoke alarm changes</TriggerLabel>
+                <ControlPageLabel>Smoke</ControlPageLabel>
+            </State>
+            <State id="coAlarm">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>CO alarm changes</TriggerLabel>
+                <ControlPageLabel>CO Alarm</ControlPageLabel>
+            </State>
+            <State id="tamper">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Tamper state changes</TriggerLabel>
+                <ControlPageLabel>Tamper</ControlPageLabel>
+            </State>
+
+            <!-- Switch/dimmer (SWITCH_BINARY 0x25 / SWITCH_MULTILEVEL 0x26) -->
+            <State id="switchState">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Switch state changes</TriggerLabel>
+                <ControlPageLabel>Switch</ControlPageLabel>
+            </State>
+            <State id="dimLevel">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Dim level changes</TriggerLabel>
+                <ControlPageLabel>Dim Level %</ControlPageLabel>
+            </State>
+
+            <!-- Power / energy meter (METER 0x32) -->
+            <State id="watts">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Power changes</TriggerLabel>
+                <ControlPageLabel>Power (W)</ControlPageLabel>
+            </State>
+            <State id="kwh">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Energy changes</TriggerLabel>
+                <ControlPageLabel>Energy (kWh)</ControlPageLabel>
+            </State>
+            <State id="voltage">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Voltage changes</TriggerLabel>
+                <ControlPageLabel>Voltage (V)</ControlPageLabel>
+            </State>
+            <State id="current">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Current changes</TriggerLabel>
+                <ControlPageLabel>Current (A)</ControlPageLabel>
+            </State>
+
+            <!-- Universal -->
+            <State id="batteryLevel">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Battery level changes</TriggerLabel>
+                <ControlPageLabel>Battery %</ControlPageLabel>
+            </State>
+            <State id="lastUpdate">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last update time changes</TriggerLabel>
+                <ControlPageLabel>Last Updated</ControlPageLabel>
+            </State>
+            <State id="rawLastReport">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last raw report changes</TriggerLabel>
+                <ControlPageLabel>Last Raw Report</ControlPageLabel>
+            </State>
+        </States>
+        <UiDisplayStateId>displayStatus</UiDisplayStateId>
+    </Device>
+</Devices>

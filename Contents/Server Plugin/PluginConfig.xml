@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PluginConfig>
+    <Field id="showDebugInfo" type="checkbox" defaultValue="false">
+        <Label>Enable debug logging</Label>
+        <Description>Log all incoming Z-Wave bytes and cmd dict keys to Indigo log. Use this when first testing a new device.</Description>
+    </Field>
+    <Field id="logUnknownReports" type="checkbox" defaultValue="true">
+        <Label>Log unknown command classes</Label>
+        <Description>Store hex bytes of any unrecognised report in the rawLastReport state and write to Indigo log.</Description>
+    </Field>
+</PluginConfig>
