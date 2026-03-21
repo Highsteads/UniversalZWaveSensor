@@ -734,48 +734,58 @@ class Plugin(indigo.PluginBase):
         Use this to verify the plugin is working without needing unknown hardware.
 
         Example byte sequences:
-          Temperature 21.5 degC:  31 05 01 22 00 D7
+          Temperature 21.5 degC:   31 05 01 22 00 D7
           Motion detected (NOTIF): 71 05 00 00 00 07 FF 07 00
-          Battery 85%:            80 03 55
+          Battery 85%:             80 03 55
         """
-        dev_id_str = values_dict.get("deviceId", "").strip()
-        hex_input  = values_dict.get("hexBytes",  "").strip()
-
-        if not dev_id_str or dev_id_str == "none" or not hex_input:
-            self.logger.error("Simulate: select a device and enter hex bytes")
-            return False
-
         try:
-            device = indigo.devices[int(dev_id_str)]
-        except (KeyError, ValueError):
-            self.logger.error("Simulate: selected device not found")
+            self.logger.info(f"Simulate: dialog closed — values={dict(values_dict)}")
+
+            dev_id_str = str(values_dict.get("deviceId", "")).strip()
+            hex_input  = str(values_dict.get("hexBytes",  "")).strip()
+
+            if not dev_id_str or dev_id_str == "none" or not hex_input:
+                self.logger.error("Simulate: select a device and enter hex bytes")
+                return False
+
+            try:
+                device = indigo.devices[int(dev_id_str)]
+            except (KeyError, ValueError):
+                self.logger.error(f"Simulate: device id '{dev_id_str}' not found")
+                return False
+
+            node_id = self._get_node_id(device)
+            if not node_id:
+                self.logger.error("Simulate: device has no valid node ID")
+                return False
+
+            try:
+                raw = [int(b, 16) for b in hex_input.split()]
+            except ValueError as e:
+                self.logger.error(
+                    f"Simulate: invalid hex — {e}  "
+                    f"(expected space-separated bytes, e.g. 31 05 01 22 00 D7)"
+                )
+                return False
+
+            if len(raw) < 2:
+                self.logger.error("Simulate: need at least 2 bytes (command class + command)")
+                return False
+
+            cmd_class = raw[0]
+            cmd_func  = raw[1]
+            hex_str   = " ".join(f"{b:02X}" for b in raw)
+
+            self.logger.info(
+                f"Simulate: -> '{device.name}' [Node {node_id}] "
+                f"CC=0x{cmd_class:02X} func=0x{cmd_func:02X} [{hex_str}]"
+            )
+            self._route_zwave_report(device, node_id, cmd_class, cmd_func, raw, hex_str)
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Simulate: unexpected error — {e}", exc_info=True)
             return False
-
-        node_id = self._get_node_id(device)
-        if not node_id:
-            self.logger.error("Simulate: device has no valid node ID")
-            return False
-
-        try:
-            raw = [int(b, 16) for b in hex_input.split()]
-        except ValueError as e:
-            self.logger.error(f"Simulate: invalid hex — {e}  (expected space-separated bytes, e.g. 31 05 01 22 00 D7)")
-            return False
-
-        if len(raw) < 2:
-            self.logger.error("Simulate: need at least 2 bytes (command class + command)")
-            return False
-
-        cmd_class = raw[0]
-        cmd_func  = raw[1]
-        hex_str   = " ".join(f"{b:02X}" for b in raw)
-
-        self.logger.info(
-            f"Simulate: -> '{device.name}' [Node {node_id}] "
-            f"CC=0x{cmd_class:02X} func=0x{cmd_func:02X} [{hex_str}]"
-        )
-        self._route_zwave_report(device, node_id, cmd_class, cmd_func, raw, hex_str)
-        return True
 
     # ==========================================================================
     # Helpers
