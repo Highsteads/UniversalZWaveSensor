@@ -6,7 +6,7 @@
 #              Parses raw Z-Wave command bytes via zwaveCommandReceived().
 # Author:      CliveS & Claude Sonnet 4.6
 # Date:        21-03-2026
-# Version:     2.0
+# Version:     2.1
 
 import indigo
 import struct
@@ -128,7 +128,7 @@ class Plugin(indigo.PluginBase):
     # ==========================================================================
 
     def startup(self):
-        self.logger.info("Universal Z-Wave Sensor plugin starting v2.0")
+        self.logger.info("Universal Z-Wave Sensor plugin starting v2.1")
         self._rebuild_node_map()
         nodes = sorted(self.node_to_device.keys())
         self.logger.info(f"  Monitoring {len(nodes)} node(s): {nodes}")
@@ -188,6 +188,29 @@ class Plugin(indigo.PluginBase):
             errors["nodeId"] = "Node ID must be a whole number between 1 and 232"
         else:
             values_dict["address"] = node_str   # Indigo uses this as display address
+
+            # Warn if Indigo already has a native device on this node.
+            # zwaveCommandReceived() only fires for nodes this plugin owns —
+            # if Indigo already owns the node, raw bytes will never arrive here
+            # and this plugin device will never update.
+            node_id = int(node_str)
+            known_names = [
+                dev.name for dev in indigo.devices
+                if dev.pluginId != self.pluginId
+                and dev.id != device_id
+                and str(getattr(dev, "address", "")) == node_str
+            ]
+            if known_names:
+                names_str = ", ".join(f"'{n}'" for n in known_names[:3])
+                if len(known_names) > 3:
+                    names_str += f" (+{len(known_names) - 3} more)"
+                errors["nodeId"] = (
+                    f"Node {node_id} already has Indigo-managed device(s): {names_str}. "
+                    f"Indigo owns this node — zwaveCommandReceived() will not fire for it "
+                    f"and this plugin device will never receive updates. "
+                    f"Use the existing Indigo device(s) directly instead."
+                )
+
         return (len(errors) == 0), values_dict, errors
 
     # ==========================================================================

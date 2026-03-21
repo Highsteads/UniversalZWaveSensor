@@ -1,11 +1,12 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
 # Filename:    test_plugin.py
-# Description: Mock test suite for Universal Z-Wave Sensor plugin v2.0
-#              Covers all raw Z-Wave parsers (_handle_* methods).
+# Description: Mock test suite for Universal Z-Wave Sensor plugin v2.1
+#              Covers all raw Z-Wave parsers (_handle_* methods) and
+#              validateDeviceConfigUi known-node detection.
 # Author:      CliveS & Claude Sonnet 4.6
 # Date:        21-03-2026
-# Version:     2.0
+# Version:     2.1
 #
 # Run from the Server Plugin directory:
 #   python3 test_plugin.py -v
@@ -77,9 +78,15 @@ class MockDevice:
 
 
 class MockDevicesDict(dict):
-    """Supports indigo.devices[id] lookups and indigo.devices.iter('self')."""
+    """
+    Supports indigo.devices[id] lookups, indigo.devices.iter('self'),
+    and plain iteration (for dev in indigo.devices) — all return device objects.
+    """
     def iter(self, filter_str=""):
         return list(self.values())
+
+    def __iter__(self):
+        return iter(self.values())
 
 
 # Build and register the mock indigo module
@@ -106,6 +113,70 @@ def make_plugin(debug=False):
     p.node_to_device = {}
     p.logger         = MagicMock()
     return p
+
+
+# ==============================================================================
+# Tests: validateDeviceConfigUi — known-node detection
+# ==============================================================================
+
+class TestValidateDeviceConfigUi(unittest.TestCase):
+
+    def setUp(self):
+        self.p        = make_plugin()
+        self.dev_dict = MockDevicesDict()
+        _indigo.devices = self.dev_dict
+        _indigo.Dict    = dict      # Indigo's dict type used for errors
+
+    def _validate(self, node_str, device_id=0):
+        values_dict = {"nodeId": node_str}
+        return self.p.validateDeviceConfigUi(values_dict, "zwaveSensor", device_id)
+
+    def test_valid_unknown_node_passes(self):
+        """Node with no existing Indigo devices -> validation passes, address set."""
+        ok, values, errors = self._validate("50")
+        self.assertTrue(ok)
+        self.assertEqual(values["address"], "50")
+        self.assertNotIn("nodeId", errors)
+
+    def test_known_node_blocked(self):
+        """Node already owned by a native Indigo device -> validation fails with explanation."""
+        native = MockDevice(5, "Front Door Motion", address="223",
+                            plugin_id="com.perceptiveautomation.indigoplugin.zwave")
+        self.dev_dict[5] = native
+        ok, values, errors = self._validate("223")
+        self.assertFalse(ok)
+        self.assertIn("nodeId", errors)
+        self.assertIn("223", errors["nodeId"])
+        self.assertIn("zwaveCommandReceived", errors["nodeId"])
+
+    def test_own_plugin_device_not_flagged(self):
+        """Existing plugin devices on the same node are not counted as native devices."""
+        own = MockDevice(10, "My Sensor", address="223",
+                         plugin_id="com.clives.universal-zwave-sensor")
+        self.dev_dict[10] = own
+        ok, _, errors = self._validate("223")
+        self.assertTrue(ok)
+        self.assertNotIn("nodeId", errors)
+
+    def test_device_being_edited_not_flagged(self):
+        """The device currently being edited is excluded from the check."""
+        native = MockDevice(10, "My Sensor", address="223",
+                            plugin_id="com.perceptiveautomation.indigoplugin.zwave")
+        self.dev_dict[10] = native
+        # Editing device_id=10 — should not flag itself
+        ok, _, errors = self._validate("223", device_id=10)
+        self.assertTrue(ok)
+
+    def test_invalid_node_id_rejected(self):
+        """Non-numeric or out-of-range node ID -> error, no device scan attempted."""
+        ok, _, errors = self._validate("999")
+        self.assertFalse(ok)
+        self.assertIn("nodeId", errors)
+
+    def test_empty_node_id_rejected(self):
+        ok, _, errors = self._validate("")
+        self.assertFalse(ok)
+        self.assertIn("nodeId", errors)
 
 
 # ==============================================================================

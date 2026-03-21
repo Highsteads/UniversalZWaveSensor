@@ -1,6 +1,6 @@
 # Universal Z-Wave Sensor — Indigo Plugin
 
-**Version 2.0** | Indigo 2025.1 | Python 3.11
+**Version 2.1** | Indigo 2025.1 | Python 3.11
 
 Allows any Z-Wave sensor to appear as a proper Indigo plugin device — specifically devices that Indigo does **not** natively recognise — without waiting for official support.
 
@@ -22,7 +22,7 @@ Indigo's built-in Z-Wave support handles recognised devices perfectly. For every
 - **Correct icons** — thermometer, light sensor, motion, power, and generic sensor icons set automatically
 - **displayStatus** — device list shows meaningful values: `detected / clear`, `open / closed`, `21.5 degC`, `450 lux`, etc.
 - **Debug logging** — toggleable; logs raw Z-Wave bytes and all state updates
-- **52-test mock suite** — full test coverage without needing an Indigo server
+- **58-test mock suite** — full test coverage without needing an Indigo server
 
 ---
 
@@ -105,7 +105,7 @@ cd "UniversalZWaveSensor.indigoPlugin/Contents/Server Plugin"
 python3 test_plugin.py -v
 ```
 
-No Indigo installation required — `indigo` is fully mocked. All 52 tests should pass.
+No Indigo installation required — `indigo` is fully mocked. All 58 tests should pass.
 
 ---
 
@@ -113,6 +113,7 @@ No Indigo installation required — `indigo` is fully mocked. All 52 tests shoul
 
 | Version | Date | Changes |
 |---|---|---|
+| 2.1 | 21-Mar-2026 | validateDeviceConfigUi warns if node already has native Indigo devices (zwaveCommandReceived won't fire for it) |
 | 2.0 | 21-Mar-2026 | Removed known-device mirror path (subscribeToChanges); plugin now purely for unrecognised devices via raw Z-Wave bytes |
 | 1.5 | 21-Mar-2026 | Fixed `_handle_multilevel` using SensorOn for all types; removed unreachable V/A meter entries |
 | 1.4 | 21-Mar-2026 | Correct icons for temperature (thermometer), humidity, luminance across all code paths |
