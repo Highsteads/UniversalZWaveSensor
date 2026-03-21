@@ -724,7 +724,7 @@ class Plugin(indigo.PluginBase):
             node_id = self._get_node_id(dev)
             if node_id:
                 result.append((str(dev.id), f"{dev.name}  (Node {node_id})"))
-        return result if result else [("", "-- No plugin devices configured --")]
+        return result if result else [("none", "-- No plugin devices configured --")]
 
     def simulateReport(self, values_dict, type_id):
         """
@@ -741,7 +741,7 @@ class Plugin(indigo.PluginBase):
         dev_id_str = values_dict.get("deviceId", "").strip()
         hex_input  = values_dict.get("hexBytes",  "").strip()
 
-        if not dev_id_str or not hex_input:
+        if not dev_id_str or dev_id_str == "none" or not hex_input:
             self.logger.error("Simulate: select a device and enter hex bytes")
             return False
 
