@@ -1,6 +1,6 @@
 # Universal Z-Wave Sensor — Indigo Plugin
 
-**Version 2.1** | Indigo 2025.1 | Python 3.11
+**Version 2.2** | Indigo 2025.1 | Python 3.11
 
 Allows any Z-Wave sensor to appear as a proper Indigo plugin device — specifically devices that Indigo does **not** natively recognise — without waiting for official support.
 
@@ -113,6 +113,7 @@ No Indigo installation required — `indigo` is fully mocked. All 58 tests shoul
 
 | Version | Date | Changes |
 |---|---|---|
+| 2.2 | 21-Mar-2026 | Added "Simulate Z-Wave Report" menu item for end-to-end testing without unknown hardware |
 | 2.1 | 21-Mar-2026 | validateDeviceConfigUi warns if node already has native Indigo devices (zwaveCommandReceived won't fire for it) |
 | 2.0 | 21-Mar-2026 | Removed known-device mirror path (subscribeToChanges); plugin now purely for unrecognised devices via raw Z-Wave bytes |
 | 1.5 | 21-Mar-2026 | Fixed `_handle_multilevel` using SensorOn for all types; removed unreachable V/A meter entries |

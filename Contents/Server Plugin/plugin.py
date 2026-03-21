@@ -6,7 +6,7 @@
 #              Parses raw Z-Wave command bytes via zwaveCommandReceived().
 # Author:      CliveS & Claude Sonnet 4.6
 # Date:        21-03-2026
-# Version:     2.1
+# Version:     2.2
 
 import indigo
 import struct
@@ -128,7 +128,7 @@ class Plugin(indigo.PluginBase):
     # ==========================================================================
 
     def startup(self):
-        self.logger.info("Universal Z-Wave Sensor plugin starting v2.1")
+        self.logger.info("Universal Z-Wave Sensor plugin starting v2.2")
         self._rebuild_node_map()
         nodes = sorted(self.node_to_device.keys())
         self.logger.info(f"  Monitoring {len(nodes)} node(s): {nodes}")
@@ -712,6 +712,74 @@ class Plugin(indigo.PluginBase):
                 indigo.kStateImageSel.SensorOn if is_on
                 else indigo.kStateImageSel.SensorOff
             )
+
+    # ==========================================================================
+    # Menu: Simulate Z-Wave Report
+    # ==========================================================================
+
+    def get_sim_device_list(self, filter="", values_dict=None, type_id="", target_id=0):
+        """ConfigUI callback — returns all plugin devices for the simulate dialog."""
+        result = []
+        for dev in indigo.devices.iter("self"):
+            node_id = self._get_node_id(dev)
+            if node_id:
+                result.append((str(dev.id), f"{dev.name}  (Node {node_id})"))
+        return result if result else [("", "-- No plugin devices configured --")]
+
+    def simulateReport(self, values_dict, type_id):
+        """
+        Menu: Simulate Z-Wave Report
+        Feeds user-supplied hex bytes directly into _route_zwave_report() for
+        the selected plugin device, exactly as if real hardware had sent them.
+        Use this to verify the plugin is working without needing unknown hardware.
+
+        Example byte sequences:
+          Temperature 21.5 degC:  31 05 01 22 00 D7
+          Motion detected (NOTIF): 71 05 00 00 00 07 FF 07 00
+          Battery 85%:            80 03 55
+        """
+        dev_id_str = values_dict.get("deviceId", "").strip()
+        hex_input  = values_dict.get("hexBytes",  "").strip()
+
+        if not dev_id_str or not hex_input:
+            self.logger.error("Simulate: select a device and enter hex bytes")
+            return False
+
+        try:
+            device = indigo.devices[int(dev_id_str)]
+        except (KeyError, ValueError):
+            self.logger.error("Simulate: selected device not found")
+            return False
+
+        node_id = self._get_node_id(device)
+        if not node_id:
+            self.logger.error("Simulate: device has no valid node ID")
+            return False
+
+        try:
+            raw = [int(b, 16) for b in hex_input.split()]
+        except ValueError as e:
+            self.logger.error(f"Simulate: invalid hex — {e}  (expected space-separated bytes, e.g. 31 05 01 22 00 D7)")
+            return False
+
+        if len(raw) < 2:
+            self.logger.error("Simulate: need at least 2 bytes (command class + command)")
+            return False
+
+        cmd_class = raw[0]
+        cmd_func  = raw[1]
+        hex_str   = " ".join(f"{b:02X}" for b in raw)
+
+        self.logger.info(
+            f"Simulate: -> '{device.name}' [Node {node_id}] "
+            f"CC=0x{cmd_class:02X} func=0x{cmd_func:02X} [{hex_str}]"
+        )
+        self._route_zwave_report(device, node_id, cmd_class, cmd_func, raw, hex_str)
+        return True
+
+    # ==========================================================================
+    # Helpers
+    # ==========================================================================
 
     def _get_node_id(self, device) -> int | None:
         node_str = device.pluginProps.get("nodeId", "").strip()
