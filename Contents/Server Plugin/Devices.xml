@@ -20,11 +20,6 @@
                     <Option value="generic">Generic (on/off)</Option>
                 </List>
             </Field>
-            <Field id="sourceDeviceId" type="menu" defaultValue="">
-                <Label>Source Indigo Device</Label>
-                <Description>Select the Indigo device to mirror from. Enter Node ID above first, then this list will show only devices on that node. Leave blank for unknown devices (Z-Wave raw path).</Description>
-                <List class="self" method="get_source_device_list" dynamicReload="true"/>
-            </Field>
             <Field id="address" type="textfield" hidden="true">
                 <Label>Address</Label>
             </Field>

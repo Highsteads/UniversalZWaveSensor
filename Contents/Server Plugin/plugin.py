@@ -1,12 +1,12 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
 # Filename:    plugin.py
-# Description: Universal Z-Wave Sensor - mirrors states from any Indigo Z-Wave
-#              device into one unified plugin device. Uses subscribeToChanges()
-#              for known devices; Z-Wave device type ownership for unknown ones.
+# Description: Universal Z-Wave Sensor - creates proper Indigo plugin devices
+#              for Z-Wave sensors that Indigo does not natively recognise.
+#              Parses raw Z-Wave command bytes via zwaveCommandReceived().
 # Author:      CliveS & Claude Sonnet 4.6
 # Date:        21-03-2026
-# Version:     1.5
+# Version:     2.0
 
 import indigo
 import struct
@@ -128,18 +128,12 @@ class Plugin(indigo.PluginBase):
     # ==========================================================================
 
     def startup(self):
-        self.logger.info("Universal Z-Wave Sensor plugin starting v1.5")
+        self.logger.info("Universal Z-Wave Sensor plugin starting v2.0")
         self._rebuild_node_map()
         nodes = sorted(self.node_to_device.keys())
         self.logger.info(f"  Monitoring {len(nodes)} node(s): {nodes}")
         if self.debug:
             self.logger.debug("  Debug logging ENABLED")
-
-        # Subscribe to ALL Indigo device state changes.
-        # deviceUpdated() will fire whenever any Indigo device updates —
-        # we filter to nodes we are monitoring.
-        indigo.devices.subscribeToChanges()
-        self.logger.info("  Subscribed to device state changes")
 
     def shutdown(self):
         self.logger.info("Universal Z-Wave Sensor plugin stopping")
@@ -175,19 +169,6 @@ class Plugin(indigo.PluginBase):
         else:
             self.logger.error(f"  No valid Node ID configured for '{device.name}' — edit device and set it")
 
-        # If a source device is configured, mirror its current state immediately.
-        # Without this, the plugin device shows a stale value from before the last
-        # reload until the source device next sends an update — which for a battery
-        # sensor can be 30+ minutes.
-        source_id_str = device.pluginProps.get("sourceDeviceId", "").strip()
-        if source_id_str:
-            try:
-                src_dev = indigo.devices[int(source_id_str)]
-                self._mirror_from_device(device, src_dev)
-                self.logger.info(f"  Initial state synced from '{src_dev.name}'")
-            except (KeyError, ValueError) as e:
-                self.logger.warning(f"  Could not sync initial state — source device not found: {e}")
-
     def deviceStopComm(self, device):
         node_id = self._get_node_id(device)
         if node_id and node_id in self.node_to_device:
@@ -210,205 +191,7 @@ class Plugin(indigo.PluginBase):
         return (len(errors) == 0), values_dict, errors
 
     # ==========================================================================
-    # Device state change subscription (Path 1 — known devices)
-    # ==========================================================================
-
-    def deviceUpdated(self, orig_dev, new_dev):
-        """
-        Called whenever ANY Indigo device changes state.
-        We check if the changed device's Z-Wave address matches a node
-        we are monitoring, and if so mirror into ALL plugin devices on that node.
-        Each plugin device may have a sourceDeviceId filter — if set, only
-        mirror when the source device matches exactly.
-        """
-        # CRITICAL: ignore state changes on our own plugin devices.
-        # Plugin devices carry address = node_id, so without this guard each
-        # mirror write fires deviceUpdated again → infinite feedback loop.
-        if new_dev.pluginId == self.pluginId:
-            return
-
-        try:
-            src_node = int(new_dev.address)
-        except (ValueError, TypeError):
-            return
-
-        if src_node not in self.node_to_device:
-            return
-
-        for plugin_dev_id in self.node_to_device[src_node]:
-            if new_dev.id == plugin_dev_id:
-                continue   # never mirror our own plugin device into itself
-            try:
-                plugin_dev = indigo.devices[plugin_dev_id]
-            except KeyError:
-                continue
-
-            # --- Source device filter ---
-            source_id_str = plugin_dev.pluginProps.get("sourceDeviceId", "").strip()
-            if source_id_str:
-                try:
-                    if new_dev.id != int(source_id_str):
-                        continue   # this plugin device only wants a specific source
-                except ValueError:
-                    pass
-
-            self._mirror_from_device(plugin_dev, new_dev)
-
-    def _mirror_from_device(self, plugin_dev, src_dev):
-        """
-        Copy known state values from any Indigo Z-Wave device (src_dev)
-        into the plugin device (plugin_dev).
-        Handles motion sensors, temp sensors, lux sensors, binary sensors,
-        switches, dimmers, energy monitors, and battery devices.
-        """
-        states      = src_dev.states
-        sensor_type = plugin_dev.pluginProps.get("sensorType", "motion")
-        changed     = False
-
-        # ----- onState (motion, contact, switch, generic on/off) -----
-        if hasattr(src_dev, "onState"):
-            is_on = src_dev.onState
-            label = "on" if is_on else "off"
-            plugin_dev.updateStateOnServer("onOffState", value=is_on, uiValue=label)
-            changed = True
-
-        # ----- Temperature -----
-        # "sensorValue" is Indigo's generic primary state for ALL Indigo sensor-type
-        # devices — both temperature AND luminance devices use it.  We can only
-        # safely fall back to sensorValue when a sourceDeviceId filter is set,
-        # because that guarantees we are talking to the correct Indigo device.
-        # Without a filter every plugin device on the node would read sensorValue
-        # from the wrong source (e.g. lux value written as temperature).
-        temp_keys = ("temperature", "Temperature")
-        if sensor_type == "temperature":
-            source_id_str = plugin_dev.pluginProps.get("sourceDeviceId", "").strip()
-            if source_id_str:
-                temp_keys = ("temperature", "Temperature", "sensorValue")
-            else:
-                # No source filter — sensorValue is ambiguous on a multi-sensor node.
-                # Set the Source Indigo Device on this plugin device to enable sensorValue.
-                if "sensorValue" in states and "temperature" not in states and "Temperature" not in states:
-                    self.logger.warning(
-                        f"{plugin_dev.name}: source device has only 'sensorValue' but no "
-                        f"sourceDeviceId is set — value ignored to prevent lux/temp mix-up. "
-                        f"Edit this device and select its Source Indigo Device."
-                    )
-        for key in temp_keys:
-            if key in states:
-                try:
-                    val    = round(float(states[key]), 1)
-                    ui_str = f"{val:.1f} degC"
-                    plugin_dev.updateStateOnServer("temperature", value=val, uiValue=ui_str)
-                    if self.debug:
-                        self.logger.debug(f"{plugin_dev.name}: temperature={val} from '{src_dev.name}'")
-                    changed = True
-                    if sensor_type == "temperature":
-                        plugin_dev.updateStateOnServer("displayStatus", value=ui_str)
-                except (ValueError, TypeError):
-                    pass
-                break
-
-        # ----- Luminance -----
-        # "sensorValue" added as fallback — Indigo's Z-Wave luminance devices
-        # expose their lux reading as sensorValue when no named state exists.
-        for key in ("illuminance", "Illuminance", "lux", "Lux", "luminance", "sensorValue"):
-            if key in states:
-                try:
-                    val    = round(float(states[key]), 0)
-                    ui_str = f"{val:.0f} lux"
-                    plugin_dev.updateStateOnServer("luminance", value=val, uiValue=ui_str)
-                    changed = True
-                    if sensor_type == "luminance":
-                        plugin_dev.updateStateOnServer("displayStatus", value=ui_str)
-                except (ValueError, TypeError):
-                    pass
-                break
-
-        # ----- Humidity -----
-        for key in ("humidity", "Humidity"):
-            if key in states:
-                try:
-                    val    = round(float(states[key]), 0)
-                    ui_str = f"{val:.0f}%"
-                    plugin_dev.updateStateOnServer("humidity", value=val, uiValue=ui_str)
-                    changed = True
-                    if sensor_type == "humidity":
-                        plugin_dev.updateStateOnServer("displayStatus", value=ui_str)
-                except (ValueError, TypeError):
-                    pass
-                break
-
-        # ----- Battery -----
-        for key in ("batteryLevel", "BatteryLevel", "battery"):
-            if key in states:
-                try:
-                    val = int(states[key])
-                    plugin_dev.updateStateOnServer("batteryLevel", value=val, uiValue=f"{val}%")
-                    changed = True
-                except (ValueError, TypeError):
-                    pass
-                break
-
-        # ----- Dim level (dimmers) -----
-        for key in ("brightnessLevel", "BrightnessLevel"):
-            if key in states:
-                try:
-                    val = int(states[key])
-                    plugin_dev.updateStateOnServer("dimLevel", value=val, uiValue=f"{val}%")
-                    changed = True
-                except (ValueError, TypeError):
-                    pass
-                break
-
-        # ----- Power / energy -----
-        for key in ("energyAccumTotal", "accumEnergyTotal"):
-            if key in states:
-                try:
-                    val = round(float(states[key]), 3)
-                    plugin_dev.updateStateOnServer("kwh", value=val, uiValue=f"{val:.3f} kWh")
-                    changed = True
-                except (ValueError, TypeError):
-                    pass
-                break
-
-        for key in ("curEnergyLevel", "energyCurLevel"):
-            if key in states:
-                try:
-                    val    = round(float(states[key]), 1)
-                    ui_str = f"{val:.1f} W"
-                    plugin_dev.updateStateOnServer("watts", value=val, uiValue=ui_str)
-                    changed = True
-                    if sensor_type == "energy":
-                        plugin_dev.updateStateOnServer("displayStatus", value=ui_str)
-                except (ValueError, TypeError):
-                    pass
-                break
-
-        # ----- Set displayStatus + icon based on sensor type -----
-        if changed:
-            if hasattr(src_dev, "onState"):
-                self._update_display(plugin_dev, sensor_type, src_dev.onState)
-            else:
-                # Pure sensor (temp/humidity/lux only) — set type-appropriate icon
-                _icon_map = {
-                    "temperature": indigo.kStateImageSel.TemperatureSensor,
-                    "humidity":    indigo.kStateImageSel.HumiditySensor,
-                    "luminance":   indigo.kStateImageSel.LightSensor,
-                }
-                plugin_dev.updateStateImageOnServer(
-                    _icon_map.get(sensor_type, indigo.kStateImageSel.SensorOn)
-                )
-
-        if changed:
-            self._touch(plugin_dev)
-            if self.debug:
-                self.logger.debug(
-                    f"{plugin_dev.name}: mirrored update from '{src_dev.name}' "
-                    f"(node {src_dev.address})"
-                )
-
-    # ==========================================================================
-    # Z-Wave report handler (Path 2 — plugin-owned unknown devices)
+    # Z-Wave report handler — plugin-owned unknown devices
     # NOTE: Only fires for devices whose Z-Wave node is owned by this plugin.
     #       Does NOT fire for nodes managed by Indigo's built-in Z-Wave handler.
     # ==========================================================================
@@ -906,27 +689,6 @@ class Plugin(indigo.PluginBase):
                 indigo.kStateImageSel.SensorOn if is_on
                 else indigo.kStateImageSel.SensorOff
             )
-
-    def get_source_device_list(self, filter="", values_dict=None, type_id="", target_id=0):
-        """
-        ConfigUI callback — returns Indigo devices on the configured node ID
-        for the sourceDeviceId dropdown.  Filters to the node the user has
-        typed so the list stays short and relevant.
-        """
-        result = [("", "-- Any (auto-detect / Z-Wave raw) --")]
-        node_id_str = ""
-        if values_dict:
-            node_id_str = str(values_dict.get("nodeId", "")).strip()
-
-        for dev in indigo.devices:
-            if str(dev.pluginId) == self.pluginId:
-                continue    # skip our own plugin devices
-            dev_addr = str(getattr(dev, "address", "")).strip()
-            if node_id_str and dev_addr != node_id_str:
-                continue    # only show devices on the configured node
-            result.append((str(dev.id), dev.name))
-
-        return result
 
     def _get_node_id(self, device) -> int | None:
         node_str = device.pluginProps.get("nodeId", "").strip()
