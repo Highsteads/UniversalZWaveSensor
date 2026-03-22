@@ -608,6 +608,20 @@ class TestHandleBinarySensor(unittest.TestCase):
         self.assertTrue(self.p._handle_binary_sensor(dev, [0x30, 0x03, 0xFF]))
         self.assertTrue(dev.state_writes["onOffState"]["value"])
 
+    def test_motion_type_0x0C_detected(self):
+        """0xFF + type=0x0C -> motion=True (Z-Wave SENSOR_BINARY v2 motion type)."""
+        dev = self._dev("motion")
+        self.assertTrue(self.p._handle_binary_sensor(dev, [0x30, 0x03, 0xFF, 0x0C]))
+        self.assertTrue(dev.state_writes["motion"]["value"])
+        self.assertEqual(dev.state_writes["displayStatus"]["value"], "detected")
+
+    def test_motion_type_0x0C_cleared(self):
+        """0x00 + type=0x0C -> motion=False."""
+        dev = self._dev("motion")
+        self.assertTrue(self.p._handle_binary_sensor(dev, [0x30, 0x03, 0x00, 0x0C]))
+        self.assertFalse(dev.state_writes["motion"]["value"])
+        self.assertEqual(dev.state_writes["displayStatus"]["value"], "clear")
+
     def test_too_short_returns_false(self):
         self.assertFalse(self.p._handle_binary_sensor(self._dev(), [0x30, 0x03]))
 
@@ -634,11 +648,12 @@ class TestHandleNotification(unittest.TestCase):
         self.assertTrue(dev.state_writes["motion"]["value"])
         self.assertEqual(dev.state_writes["displayStatus"]["value"], "detected")
 
-    def test_home_security_motion_cleared(self):
+    def test_home_security_motion_detected_no_location(self):
+        """Event 0x08 = Motion Detection unknown location — also means DETECTED, not cleared."""
         dev = self._dev("motion")
         self.assertTrue(self.p._handle_notification(dev, self._notif(0x07, 0x08)))
-        self.assertFalse(dev.state_writes["motion"]["value"])
-        self.assertEqual(dev.state_writes["displayStatus"]["value"], "clear")
+        self.assertTrue(dev.state_writes["motion"]["value"])
+        self.assertEqual(dev.state_writes["displayStatus"]["value"], "detected")
 
     def test_home_security_tamper(self):
         dev = self._dev("generic")

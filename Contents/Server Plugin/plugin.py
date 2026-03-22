@@ -7,7 +7,7 @@
 #              natively. Uses subscribeToIncoming() to receive ALL Z-Wave bytes.
 # Author:      CliveS & Claude Sonnet 4.6
 # Date:        22-03-2026
-# Version:     3.3
+# Version:     3.4
 
 import indigo
 import struct
@@ -71,6 +71,7 @@ BINARY_SENSOR_TYPES = {
     0x09: "motion",        # PIR alternative
     0x0A: "contact",       # door / window
     0x0B: "motion",        # movement alternative
+    0x0C: "motion",        # motion sensor (Z-Wave SENSOR_BINARY v2 type 0x0C)
 }
 
 # ==============================================================================
@@ -84,11 +85,11 @@ NOTIF_HOME_SECURITY    = 0x07
 NOTIF_POWER            = 0x08
 
 # HOME_SECURITY events
-HS_MOTION_DETECTED     = 0x07
-HS_MOTION_CLEARED      = 0x08
-HS_TAMPER              = 0x03
-HS_TAMPER_CLEARED      = 0x04
-HS_IDLE                = 0x00   # generic idle — check what was cleared
+HS_MOTION_DETECTED     = 0x07   # Motion Detection, location provided
+HS_MOTION_DETECTED_NL  = 0x08   # Motion Detection, unknown location (same meaning)
+HS_TAMPER              = 0x03   # Tampering — product covering removed
+HS_TAMPER_ALT          = 0x09   # Tampering — alternate event code (some devices)
+HS_IDLE                = 0x00   # No event / all clear
 
 # ACCESS_CONTROL events
 AC_DOOR_OPEN           = 0x16
@@ -135,7 +136,7 @@ class Plugin(indigo.PluginBase):
     # ==========================================================================
 
     def startup(self):
-        self.logger.info("Universal Z-Wave Sensor plugin starting v3.3")
+        self.logger.info("Universal Z-Wave Sensor plugin starting v3.4")
         indigo.zwave.subscribeToIncoming()   # receive ALL Z-Wave bytes, including nodes with native Indigo devices
         self._rebuild_node_map()
         nodes = sorted(self.node_to_device.keys())
@@ -505,24 +506,15 @@ class Plugin(indigo.PluginBase):
         notif_event  = raw[7]
 
         if notif_type == NOTIF_HOME_SECURITY:
-            if notif_event == HS_MOTION_DETECTED:
+            if notif_event in (HS_MOTION_DETECTED, HS_MOTION_DETECTED_NL):
                 self.logger.info(f"{device.name}: Motion DETECTED")
                 device.updateStateOnServer("motion",        value=True,  uiValue="detected")
                 device.updateStateOnServer("onOffState",    value=True)
                 device.updateStateOnServer("displayStatus", value="detected")
-            elif notif_event == HS_MOTION_CLEARED:
-                self.logger.info(f"{device.name}: Motion CLEARED")
-                device.updateStateOnServer("motion",        value=False, uiValue="clear")
-                device.updateStateOnServer("onOffState",    value=False)
-                device.updateStateOnServer("displayStatus", value="clear")
-            elif notif_event in (HS_TAMPER, 0x09):
+            elif notif_event in (HS_TAMPER, HS_TAMPER_ALT):
                 self.logger.info(f"{device.name}: Tamper DETECTED")
                 device.updateStateOnServer("tamper",        value=True,  uiValue="tamper")
                 device.updateStateOnServer("displayStatus", value="tamper")
-            elif notif_event == HS_TAMPER_CLEARED:
-                self.logger.info(f"{device.name}: Tamper CLEARED")
-                device.updateStateOnServer("tamper",        value=False, uiValue="clear")
-                device.updateStateOnServer("displayStatus", value="clear")
             elif notif_event == HS_IDLE:
                 self.logger.info(f"{device.name}: Home security idle (all clear)")
                 device.updateStateOnServer("motion",        value=False, uiValue="clear")
