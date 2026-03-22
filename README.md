@@ -95,7 +95,7 @@ For a multi-sensor (e.g. door sensor that also sends temperature and humidity), 
 |---|---|---|
 | Enable debug logging | Off | Logs raw Z-Wave byte sequences and all state updates |
 | Log unknown command classes | On | Writes unrecognised report bytes to `rawLastReport` state and Indigo log |
-| Temperature unit | degC | All temperature reports converted to this unit before storing |
+| Temperature unit | degC | Choose degC or degF — all temperature reports are converted to this unit before storing, regardless of what the sensor reports |
 | Enable stale device detection | On | Warns when a device has not reported within the threshold |
 | Stale threshold | 24 hours | How long without a report before a device is considered offline |
 

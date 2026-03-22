@@ -214,7 +214,7 @@ Access via **Plugins → Universal Z-Wave Sensor → Configure...**
 |---|---|---|
 | **Enable debug logging** | Off | Logs every incoming Z-Wave byte sequence and all state updates. Use when setting up a new device. Turn off in normal use. |
 | **Log unknown command classes** | On | When the plugin receives a report it cannot decode, it logs the hex bytes and stores them in `rawLastReport`. |
-| **Temperature unit** | degC | All temperature values are stored and displayed in this unit. Reports in the opposite unit are converted automatically at ingest. |
+| **Temperature unit** | degC | Choose **degC** or **degF** — all temperature values are stored and displayed in this unit. Reports in the opposite unit are converted automatically at ingest. |
 | **Enable stale device detection** | On | Warns when a device has not sent any report within the configured threshold and marks it offline. |
 | **Stale threshold** | 24 hours | How long without any report before a device is flagged as offline. Options: 4 / 8 / 12 / 24 / 48 / 72 hours. |
 
