@@ -7,7 +7,7 @@
 #              natively. Uses subscribeToIncoming() to receive ALL Z-Wave bytes.
 # Author:      CliveS & Claude Sonnet 4.6
 # Date:        22-03-2026
-# Version:     3.4
+# Version:     3.5
 
 import indigo
 import struct
@@ -136,7 +136,7 @@ class Plugin(indigo.PluginBase):
     # ==========================================================================
 
     def startup(self):
-        self.logger.info("Universal Z-Wave Sensor plugin starting v3.4")
+        self.logger.info("Universal Z-Wave Sensor plugin starting v3.5")
         indigo.zwave.subscribeToIncoming()   # receive ALL Z-Wave bytes, including nodes with native Indigo devices
         self._rebuild_node_map()
         nodes = sorted(self.node_to_device.keys())
@@ -477,9 +477,14 @@ class Plugin(indigo.PluginBase):
         label = on_label if is_active else off_label
 
         self.logger.info(f"{device.name}: {state_key} = {label}")
-        device.updateStateOnServer(state_key,       value=is_active, uiValue=label)
-        device.updateStateOnServer("onOffState",    value=is_active)
-        device.updateStateOnServer("displayStatus", value=label)
+        device.updateStateOnServer(state_key,    value=is_active, uiValue=label)
+        device.updateStateOnServer("onOffState", value=is_active)
+        # Only update displayStatus if this state matches the device's primary type
+        dev_type = device.pluginProps.get("sensorType", "generic")
+        if (dev_type == "generic"
+                or (state_key == "motion"  and dev_type == "motion")
+                or (state_key == "contact" and dev_type == "contact")):
+            device.updateStateOnServer("displayStatus", value=label)
         self._touch(device)
         return True
 
@@ -506,21 +511,26 @@ class Plugin(indigo.PluginBase):
         notif_event  = raw[7]
 
         if notif_type == NOTIF_HOME_SECURITY:
+            _dt           = device.pluginProps.get("sensorType", "generic")
+            _motion_disp  = _dt in ("motion", "generic")
             if notif_event in (HS_MOTION_DETECTED, HS_MOTION_DETECTED_NL):
                 self.logger.info(f"{device.name}: Motion DETECTED")
-                device.updateStateOnServer("motion",        value=True,  uiValue="detected")
-                device.updateStateOnServer("onOffState",    value=True)
-                device.updateStateOnServer("displayStatus", value="detected")
+                device.updateStateOnServer("motion",     value=True,  uiValue="detected")
+                device.updateStateOnServer("onOffState", value=True)
+                if _motion_disp:
+                    device.updateStateOnServer("displayStatus", value="detected")
             elif notif_event in (HS_TAMPER, HS_TAMPER_ALT):
                 self.logger.info(f"{device.name}: Tamper DETECTED")
-                device.updateStateOnServer("tamper",        value=True,  uiValue="tamper")
-                device.updateStateOnServer("displayStatus", value="tamper")
+                device.updateStateOnServer("tamper",     value=True,  uiValue="tamper")
+                if _motion_disp:
+                    device.updateStateOnServer("displayStatus", value="tamper")
             elif notif_event == HS_IDLE:
                 self.logger.info(f"{device.name}: Home security idle (all clear)")
-                device.updateStateOnServer("motion",        value=False, uiValue="clear")
-                device.updateStateOnServer("tamper",        value=False, uiValue="clear")
-                device.updateStateOnServer("onOffState",    value=False)
-                device.updateStateOnServer("displayStatus", value="clear")
+                device.updateStateOnServer("motion",     value=False, uiValue="clear")
+                device.updateStateOnServer("tamper",     value=False, uiValue="clear")
+                device.updateStateOnServer("onOffState", value=False)
+                if _motion_disp:
+                    device.updateStateOnServer("displayStatus", value="clear")
             else:
                 self.logger.info(
                     f"{device.name}: HOME_SECURITY event=0x{notif_event:02X} "
@@ -530,16 +540,20 @@ class Plugin(indigo.PluginBase):
             return True
 
         elif notif_type == NOTIF_ACCESS_CONTROL:
+            _dt            = device.pluginProps.get("sensorType", "generic")
+            _contact_disp  = _dt in ("contact", "generic")
             if notif_event == AC_DOOR_OPEN:
                 self.logger.info(f"{device.name}: Door/Window OPEN")
-                device.updateStateOnServer("contact",       value=True,  uiValue="open")
-                device.updateStateOnServer("onOffState",    value=True)
-                device.updateStateOnServer("displayStatus", value="open")
+                device.updateStateOnServer("contact",    value=True,  uiValue="open")
+                device.updateStateOnServer("onOffState", value=True)
+                if _contact_disp:
+                    device.updateStateOnServer("displayStatus", value="open")
             elif notif_event == AC_DOOR_CLOSED:
                 self.logger.info(f"{device.name}: Door/Window CLOSED")
-                device.updateStateOnServer("contact",       value=False, uiValue="closed")
-                device.updateStateOnServer("onOffState",    value=False)
-                device.updateStateOnServer("displayStatus", value="closed")
+                device.updateStateOnServer("contact",    value=False, uiValue="closed")
+                device.updateStateOnServer("onOffState", value=False)
+                if _contact_disp:
+                    device.updateStateOnServer("displayStatus", value="closed")
             else:
                 self.logger.info(
                     f"{device.name}: ACCESS_CONTROL event=0x{notif_event:02X} (unhandled)"
