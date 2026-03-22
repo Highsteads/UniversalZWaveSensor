@@ -37,7 +37,7 @@ This plugin fills that gap. You select the existing native Indigo device, choose
 - A motion sensor that also reports luminance and CO2 that Indigo does not expose
 - Any multi-sensor where Indigo captures one value but you want the others
 
-**Reporting to Indigo developers:** The Simulate Z-Wave Report tool lets you feed raw byte sequences and see how the plugin parses them. If you want to help Mat and Jay (Indigo's authors) add native support for a sensor, enable debug logging, trigger the sensor, and send them the logged byte sequences.
+**Reporting to Indigo developers:** The Simulate Z-Wave Report tool lets you feed raw byte sequences and see how the plugin parses them. If you want to help Matt and Jay (Indigo's authors) add native support for a sensor, enable debug logging, trigger the sensor, and send them the logged byte sequences.
 
 ---
 
@@ -226,7 +226,7 @@ Access via **Plugins → Universal Z-Wave Sensor → Configure...**
 
 Select a plugin device, enter space-separated hex bytes, and click **Send**. The bytes are fed directly into the parser as if the real hardware had sent them. The dialog stays open so you can send multiple sequences in one session without reopening it.
 
-This tool is also useful for capturing raw bytes from sensors and sharing them with the Indigo developers (Mat and Jay) to help them add or improve native support.
+This tool is also useful for capturing raw bytes from sensors and sharing them with the Indigo developers (Matt and Jay) to help them add or improve native support.
 
 ### Common byte sequences
 

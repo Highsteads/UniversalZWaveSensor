@@ -12,7 +12,7 @@ When you include a Z-Wave sensor in Indigo, Indigo creates a native device for i
 
 This plugin fills that gap. You select the existing native Indigo device, choose the sensor type you want to capture, and the plugin creates a properly-typed Indigo device that works in triggers, control pages, and action groups exactly like any native device.
 
-The plugin also provides a **Simulate Z-Wave Report** tool — useful for sending raw Z-Wave byte captures to Mat and Jay (Indigo's authors) when a sensor is behaving unexpectedly, so they can add or improve native support.
+The plugin also provides a **Simulate Z-Wave Report** tool — useful for sending raw Z-Wave byte captures to Matt and Jay (Indigo's authors) when a sensor is behaving unexpectedly, so they can add or improve native support.
 
 ---
 
