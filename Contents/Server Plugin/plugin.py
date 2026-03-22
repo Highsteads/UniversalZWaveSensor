@@ -106,11 +106,13 @@ METER_GAS              = 0x02
 METER_WATER            = 0x03
 
 METER_ELECTRIC_SCALES = {
-    0: ("kwh",   "kWh"),
-    1: ("kwh",   "kVAh"),
-    2: ("watts", "W"),
+    0: ("kwh",     "kWh"),
+    1: ("kwh",     "kVAh"),
+    2: ("watts",   "W"),
     # scale=3: pulse count (no useful state to write)
-    # scale=4/5 (V/A) require METER_REPORT v3 extended scale — not yet implemented
+    # scale=4/5/6 use METER_REPORT v3 — Scale2 bit in byte 2 combines with 2-bit scale in byte 3
+    4: ("voltage", "V"),
+    5: ("current", "A"),
 }
 
 
@@ -706,11 +708,13 @@ class Plugin(indigo.PluginBase):
 
     def _handle_meter(self, device, raw) -> bool:
         """
-        METER_REPORT v2 (CC=0x32, cmd=0x02)
+        METER_REPORT v2/v3 (CC=0x32, cmd=0x02)
         Byte layout:
           [0x32, 0x02, meter_type_rate, prec_scale_size, value_bytes...]
-          meter_type_rate: bits [6:5]=rate_type  [4:0]=meter_type
-          prec_scale_size: bits [7:5]=precision  [4:3]=scale  [2:0]=size
+          meter_type_rate: bit [7]=Scale2  bits [6:5]=rate_type  [4:0]=meter_type
+          prec_scale_size: bits [7:5]=precision  [4:3]=scale_lsb  [2:0]=size
+          v3 full scale (3-bit): Scale2 << 2 | scale_lsb
+            0=kWh  1=kVAh  2=W  3=pulse  4=V  5=A
         """
         if len(raw) < 6:
             return False
@@ -719,7 +723,9 @@ class Plugin(indigo.PluginBase):
         prec_scale_size = raw[3]
         meter_type      = meter_type_rate & 0x1F
         size            = prec_scale_size & 0x07
-        scale           = (prec_scale_size >> 3) & 0x03
+        scale_lsb       = (prec_scale_size >> 3) & 0x03
+        scale2_bit      = (meter_type_rate   >> 7) & 0x01   # v3 MSB of scale
+        scale           = (scale2_bit << 2) | scale_lsb
         precision       = (prec_scale_size >> 5) & 0x07
 
         if len(raw) < 4 + size:

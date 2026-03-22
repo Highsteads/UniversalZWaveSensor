@@ -1,6 +1,6 @@
 # Universal Z-Wave Sensor Plugin — User Manual
 
-**Version 3.9** | Indigo 2025.1 | Author: CliveS & Claude Sonnet 4.6
+**Version 4.0** | Indigo 2025.1 | Author: CliveS & Claude Sonnet 4.6
 **Last updated:** 22-Mar-2026
 
 ---
@@ -348,7 +348,7 @@ The plugin auto-detects byte order: if raw[5] is `0x00` or `0xFF` the frame is Z
 | 1 | `kwh` | kVAh |
 | 2 | `watts` | W |
 
-Note: Voltage (V) and current (A) require METER_REPORT v3 extended scale encoding — not yet implemented.
+Note: Voltage (V) and current (A) use METER_REPORT v3 Scale2 bit encoding and are fully supported.
 
 ### SWITCH_BINARY (0x25) — report 0x03
 
@@ -440,7 +440,7 @@ The `onOffState` is set on all device types wherever meaningful, so standard Ind
 | Limitation | Detail |
 |---|---|
 | Battery devices | Only report on state change or scheduled wake-up. Cannot be polled on demand. |
-| METER_REPORT v3+ | Voltage (V) and current (A) require the extended Scale2 byte introduced in v3. The current parser handles v2 only (kWh, kVAh, W). |
+| METER_REPORT v3+ | Voltage (V) and current (A) now parsed via the v3 Scale2 bit. Power factor and other scale values above 5 are not decoded. |
 | S2 security | Indigo decrypts S2-encrypted frames before delivering them to plugins. The plugin only sees the decrypted payload — transparent. |
 | Proprietary command classes | 0xF0 and above are manufacturer-specific. The plugin logs the raw bytes in `rawLastReport` but does not decode them. |
 
@@ -450,6 +450,7 @@ The `onOffState` is set on all device types wherever meaningful, so standard Ind
 
 | Version | Date | Summary |
 |---|---|---|
+| **4.0** | 22-Mar-2026 | METER_REPORT v3 voltage (V) and current (A) — Scale2 bit (byte 2 bit 7) extracted and combined with 2-bit scale to form full 3-bit scale value; `voltage` and `current` device states now populated; 112 tests |
 | **3.9** | 22-Mar-2026 | Startup banner in `__init__()` using raw constructor params (display_name, version, plugin_id); Info.plist standardised — PluginVersion key added (fixes blank version), IwsApiVersion, CFBundleURLTypes, GithubInfo added |
 | **3.8** | 22-Mar-2026 | SENSOR_BINARY (CC 0x30) logging moved to DEBUG always — NOTIFICATION is the primary INFO source for motion events |
 | **3.7** | 22-Mar-2026 | Log verbosity reduced — INFO only for report types matching the device's sensorType; secondary fan-out (e.g. temperature update on a Lux device) moved to DEBUG; HS_IDLE always DEBUG |

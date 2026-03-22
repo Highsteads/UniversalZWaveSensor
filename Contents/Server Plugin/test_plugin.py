@@ -787,6 +787,26 @@ class TestHandleMeter(unittest.TestCase):
         self.assertTrue(self.p._handle_meter(dev, raw))
         self.assertAlmostEqual(dev.state_writes["kwh"]["value"], 1.234, places=3)
 
+    def test_voltage_230_45(self):
+        """Electric voltage 230.45 V: v3 Scale2=1, scale_lsb=0 (full scale=4), precision=2, size=2"""
+        # byte 2: Scale2 bit (bit7) = 1, meter_type = 0x01 -> 0x81
+        # byte 3: precision=2, scale_lsb=0, size=2 -> _pss(2, 0, 2)
+        raw = [0x32, 0x02, 0x81, self._pss(2, 0, 2)] + list(struct.pack(">h", 23045))
+        dev = self._dev()
+        self.assertTrue(self.p._handle_meter(dev, raw))
+        self.assertAlmostEqual(dev.state_writes["voltage"]["value"], 230.45, places=2)
+        self.assertIn("V", dev.state_writes["voltage"]["uiValue"])
+
+    def test_current_12_50(self):
+        """Electric current 12.50 A: v3 Scale2=1, scale_lsb=1 (full scale=5), precision=2, size=2"""
+        # byte 2: Scale2 bit (bit7) = 1, meter_type = 0x01 -> 0x81
+        # byte 3: precision=2, scale_lsb=1, size=2 -> _pss(2, 1, 2)
+        raw = [0x32, 0x02, 0x81, self._pss(2, 1, 2)] + list(struct.pack(">h", 1250))
+        dev = self._dev()
+        self.assertTrue(self.p._handle_meter(dev, raw))
+        self.assertAlmostEqual(dev.state_writes["current"]["value"], 12.50, places=2)
+        self.assertIn("A", dev.state_writes["current"]["uiValue"])
+
     def test_too_short_returns_false(self):
         self.assertFalse(self.p._handle_meter(self._dev(), [0x32, 0x02, 0x01]))
 

@@ -1,6 +1,6 @@
 # Universal Z-Wave Sensor — Indigo Plugin
 
-**Version 3.9** | Indigo 2025.1 | Python 3.11
+**Version 4.0** | Indigo 2025.1 | Python 3.11
 
 Creates companion plugin devices alongside your existing Indigo Z-Wave devices, exposing sensor values that Indigo does not capture natively — temperature, humidity, luminance, contact state, and more.
 
@@ -157,7 +157,7 @@ Leave **Endpoint ID** blank (or set to `0`) to accept reports from all endpoints
 | Item | Notes |
 |---|---|
 | Battery devices | Only report on state change or wake-up — cannot be polled on demand |
-| METER_REPORT v3+ | Voltage (V) and current (A) require extended scale byte — not yet parsed |
+| METER_REPORT v3+ | Voltage (V) and current (A) parsed using the Scale2 bit (byte 2 bit 7); power factor and other higher scale values not decoded |
 | S2 security | Indigo decrypts S2 before delivery — transparent to the plugin |
 | Proprietary command classes | 0xF0+ manufacturer-specific bytes logged raw but not decoded |
 
@@ -178,6 +178,7 @@ No Indigo installation required — `indigo` is fully mocked. All 110 tests shou
 
 | Version | Date | Changes |
 |---|---|---|
+| 4.0 | 22-Mar-2026 | METER_REPORT v3 voltage (V) and current (A) — Scale2 bit (byte 2 bit 7) now extracted and combined with 2-bit scale to form full 3-bit scale value; 112 tests |
 | 3.9 | 22-Mar-2026 | Startup banner in `__init__()` using raw constructor params; Info.plist standardised (PluginVersion key added — fixes blank version, IwsApiVersion, CFBundleURLTypes, GithubInfo) |
 | 3.8 | 22-Mar-2026 | SENSOR_BINARY (CC 0x30) logging moved to DEBUG always — NOTIFICATION is the primary INFO source for motion events |
 | 3.7 | 22-Mar-2026 | Log verbosity reduced — INFO only for report types matching device sensorType; secondary fan-out and HS_IDLE moved to DEBUG |
