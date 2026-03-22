@@ -1,6 +1,6 @@
 # Universal Z-Wave Sensor Plugin — User Manual
 
-**Version 3.2** | Indigo 2025.1 | Author: CliveS & Claude Sonnet 4.6
+**Version 3.3** | Indigo 2025.1 | Author: CliveS & Claude Sonnet 4.6
 **Last updated:** 22-Mar-2026
 
 ---
@@ -450,7 +450,8 @@ The `onOffState` is set on all device types wherever meaningful, so standard Ind
 
 | Version | Date | Summary |
 |---|---|---|
-| **3.2** | 22-Mar-2026 | Simplified to single-path UI — always select native Indigo device from dropdown; manual node ID entry removed; 92 tests |
+| **3.3** | 22-Mar-2026 | Fixed serial API frame unwrapping — `subscribeToIncoming()` delivers the full Z-Wave serial frame; `_extract_node_and_bytes()` now strips the SOF+header to expose the command payload; 96 tests |
+| **3.2** | 22-Mar-2026 | Simplified to single-path UI — always select native Indigo device from dropdown; manual node ID entry removed |
 | **3.1** | 22-Mar-2026 | `indigo.zwave.subscribeToIncoming()` at startup so all Z-Wave bytes received regardless of node ownership; NOTIFICATION byte order auto-detection; native device picker added |
 | **3.0** | 21-Mar-2026 | Multi-channel endpoint routing (CC 0x60); stale device detection; temperature unit preference; wake-up interval tracking; Simulate dialog stays open |
 | **2.0** | 21-Mar-2026 | Removed known-device mirror path; plugin now uses raw Z-Wave bytes only |

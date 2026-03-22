@@ -7,7 +7,7 @@
 #              natively. Uses subscribeToIncoming() to receive ALL Z-Wave bytes.
 # Author:      CliveS & Claude Sonnet 4.6
 # Date:        22-03-2026
-# Version:     3.2
+# Version:     3.3
 
 import indigo
 import struct
@@ -135,7 +135,7 @@ class Plugin(indigo.PluginBase):
     # ==========================================================================
 
     def startup(self):
-        self.logger.info("Universal Z-Wave Sensor plugin starting v3.2")
+        self.logger.info("Universal Z-Wave Sensor plugin starting v3.3")
         indigo.zwave.subscribeToIncoming()   # receive ALL Z-Wave bytes, including nodes with native Indigo devices
         self._rebuild_node_map()
         nodes = sorted(self.node_to_device.keys())
@@ -888,9 +888,16 @@ class Plugin(indigo.PluginBase):
 
     def _extract_node_and_bytes(self, cmd) -> tuple[int | None, list[int]]:
         """
-        Extract node_id and raw bytes from cmd dict.
-        Key names vary between Indigo versions — tries common variants.
-        If neither works, enable debug logging and inspect the logged dict.
+        Extract node_id and raw Z-Wave command bytes from cmd dict.
+
+        When subscribeToIncoming() is active, Indigo delivers the full Z-Wave
+        serial API frame rather than just the command payload.
+        APPLICATION_COMMAND_HANDLER frames are detected and unwrapped:
+          [01, LEN, 00, 04, rxStatus, srcNode, cmdLen, cmd_bytes..., checksum]
+           ^SOF         ^FUNC=0x04    ^node    ^len    ^-- actual Z-Wave here
+
+        For plugin-owned devices (without subscribeToIncoming), the bytes field
+        already contains just the command payload — no unwrapping needed.
         """
         node_id = cmd.get("nodeId",
                   cmd.get("sourceNodeId",
@@ -899,6 +906,14 @@ class Plugin(indigo.PluginBase):
         raw = list(cmd.get("bytes",
                cmd.get("cmdBytes",
                cmd.get("rawBytes", []))))
+
+        # Detect and unwrap Z-Wave serial API frame.
+        # SOF=0x01 at byte 0, FUNC_ID_APPLICATION_COMMAND_HANDLER=0x04 at byte 3.
+        # No valid Z-Wave command class uses 0x01, so this detection is safe.
+        if len(raw) >= 8 and raw[0] == 0x01 and raw[3] == 0x04:
+            cmd_len = raw[6]
+            if len(raw) >= 7 + cmd_len:
+                raw = raw[7:7 + cmd_len]
 
         return node_id, raw
 

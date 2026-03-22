@@ -1,6 +1,6 @@
 # Universal Z-Wave Sensor — Indigo Plugin
 
-**Version 3.2** | Indigo 2025.1 | Python 3.11
+**Version 3.3** | Indigo 2025.1 | Python 3.11
 
 Creates companion plugin devices alongside your existing Indigo Z-Wave devices, exposing sensor values that Indigo does not capture natively — temperature, humidity, luminance, contact state, and more.
 
@@ -29,7 +29,7 @@ The plugin also provides a **Simulate Z-Wave Report** tool — useful for sendin
 - **Wake-up interval tracking** — WAKE_UP_INTERVAL_REPORT stores the interval in the `wakeUpInterval` state; wake-up notifications mark the device as alive
 - **Simulate Z-Wave Report** — menu item lets you feed raw hex bytes to any plugin device for end-to-end testing; dialog stays open for iterative testing
 - **Debug logging** — toggleable; logs raw Z-Wave bytes and all state updates
-- **92-test mock suite** — full test coverage without needing an Indigo server
+- **96-test mock suite** — full test coverage without needing an Indigo server
 
 ---
 
@@ -170,7 +170,7 @@ cd "UniversalZWaveSensor.indigoPlugin/Contents/Server Plugin"
 python3 test_plugin.py -v
 ```
 
-No Indigo installation required — `indigo` is fully mocked. All 92 tests should pass.
+No Indigo installation required — `indigo` is fully mocked. All 96 tests should pass.
 
 ---
 
@@ -178,7 +178,8 @@ No Indigo installation required — `indigo` is fully mocked. All 92 tests shoul
 
 | Version | Date | Changes |
 |---|---|---|
-| 3.2 | 22-Mar-2026 | Simplified to single-path UI — always select native Indigo device from dropdown; manual node ID entry removed; 92 tests |
+| 3.3 | 22-Mar-2026 | Fixed serial API frame unwrapping — subscribeToIncoming() delivers full Z-Wave serial frame; _extract_node_and_bytes() now strips SOF+header to expose command payload; 96 tests |
+| 3.2 | 22-Mar-2026 | Simplified to single-path UI — always select native Indigo device from dropdown; manual node ID entry removed |
 | 3.1 | 22-Mar-2026 | `indigo.zwave.subscribeToIncoming()` at startup so all Z-Wave bytes received regardless of node ownership; NOTIFICATION byte order auto-detection; native device picker added |
 | 3.0 | 21-Mar-2026 | Multi-channel endpoint routing; stale device detection; temperature unit preference (degC/degF); wake-up interval tracking; simulate dialog stays open |
 | 2.0 | 21-Mar-2026 | Removed known-device mirror path; plugin now uses raw Z-Wave bytes only |

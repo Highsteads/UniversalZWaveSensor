@@ -1022,6 +1022,66 @@ class TestNotificationByteOrderDetection(unittest.TestCase):
 
 
 # ==============================================================================
+# Tests: serial API frame unwrapping in _extract_node_and_bytes
+# ==============================================================================
+
+class TestExtractNodeAndBytes(unittest.TestCase):
+    """
+    When subscribeToIncoming() is active, Indigo delivers the full Z-Wave
+    serial API frame. _extract_node_and_bytes() must unwrap it.
+    Frame: [01, LEN, 00, 04, rxStatus, srcNode, cmdLen, cmd_bytes..., checksum]
+    """
+
+    def setUp(self):
+        self.p = make_plugin()
+
+    def _cmd(self, node_id, raw_bytes):
+        """Build a mock cmd dict as Indigo delivers it."""
+        mock_cmd = MagicMock()
+        mock_cmd.get = lambda key, default=None: {
+            "nodeId":  node_id,
+            "bytes":   raw_bytes,
+        }.get(key, default)
+        return mock_cmd
+
+    def _serial_frame(self, node_id, payload):
+        """Wrap a Z-Wave payload in a serial API APPLICATION_COMMAND_HANDLER frame."""
+        cmd_len = len(payload)
+        body    = [0x00, 0x04, 0x00, node_id, cmd_len] + list(payload)
+        length  = len(body) + 1   # body + checksum byte
+        frame   = [0x01, length] + body + [0xFF]   # 0xFF = dummy checksum
+        return frame
+
+    def test_serial_frame_unwrapped_correctly(self):
+        """Temperature report wrapped in serial API frame is unwrapped to raw payload."""
+        payload = [0x31, 0x05, 0x01, 0x22, 0x00, 0xDA]   # 21.8 degC
+        frame   = self._serial_frame(106, payload)
+        node_id, raw = self.p._extract_node_and_bytes(self._cmd(106, frame))
+        self.assertEqual(node_id, 106)
+        self.assertEqual(raw, payload)
+
+    def test_plain_bytes_passed_through_unchanged(self):
+        """Bytes that are already a Z-Wave command (no serial framing) pass through unchanged."""
+        payload = [0x31, 0x05, 0x01, 0x22, 0x00, 0xD7]   # 21.5 degC
+        node_id, raw = self.p._extract_node_and_bytes(self._cmd(50, payload))
+        self.assertEqual(node_id, 50)
+        self.assertEqual(raw, payload)
+
+    def test_notification_frame_unwrapped(self):
+        """NOTIFICATION report wrapped in serial API frame is unwrapped correctly."""
+        payload = [0x71, 0x05, 0x00, 0x00, 0x00, 0xFF, 0x07, 0x07, 0x00]
+        frame   = self._serial_frame(106, payload)
+        node_id, raw = self.p._extract_node_and_bytes(self._cmd(106, frame))
+        self.assertEqual(raw, payload)
+
+    def test_truncated_frame_falls_through_safely(self):
+        """A truncated or malformed frame is returned as-is rather than crashing."""
+        frame = [0x01, 0x08, 0x00, 0x04, 0x00, 0x6A]   # header only, no cmd_len byte
+        node_id, raw = self.p._extract_node_and_bytes(self._cmd(106, frame))
+        self.assertEqual(raw, frame)   # unchanged — no crash
+
+
+# ==============================================================================
 # Entry point
 # ==============================================================================
 
