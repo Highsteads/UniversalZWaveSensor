@@ -1,6 +1,6 @@
 # Universal Z-Wave Sensor Plugin — User Manual
 
-**Version 3.1** | Indigo 2025.1 | Author: CliveS & Claude Sonnet 4.6
+**Version 3.2** | Indigo 2025.1 | Author: CliveS & Claude Sonnet 4.6
 **Last updated:** 22-Mar-2026
 
 ---
@@ -10,49 +10,44 @@
 1. [What this plugin does](#1-what-this-plugin-does)
 2. [How it works](#2-how-it-works)
 3. [Installation](#3-installation)
-4. [Creating a device — unrecognised node](#4-creating-a-device--unrecognised-node)
-5. [Creating a device — parallel mode](#5-creating-a-device--parallel-mode)
-6. [Multi-sensor devices — one node, multiple plugin devices](#6-multi-sensor-devices--one-node-multiple-plugin-devices)
-7. [Multi-channel devices — endpoint routing](#7-multi-channel-devices--endpoint-routing)
-8. [Sensor types and device states](#8-sensor-types-and-device-states)
-9. [Plugin preferences](#9-plugin-preferences)
-10. [Simulate Z-Wave Report](#10-simulate-z-wave-report)
-11. [Stale device detection](#11-stale-device-detection)
-12. [Z-Wave command classes handled](#12-z-wave-command-classes-handled)
-13. [Triggers and automations](#13-triggers-and-automations)
-14. [Troubleshooting](#14-troubleshooting)
-15. [Known limitations](#15-known-limitations)
-16. [Changelog](#16-changelog)
+4. [Creating a device](#4-creating-a-device)
+5. [Multi-sensor devices — one node, multiple plugin devices](#5-multi-sensor-devices--one-node-multiple-plugin-devices)
+6. [Multi-channel devices — endpoint routing](#6-multi-channel-devices--endpoint-routing)
+7. [Sensor types and device states](#7-sensor-types-and-device-states)
+8. [Plugin preferences](#8-plugin-preferences)
+9. [Simulate Z-Wave Report](#9-simulate-z-wave-report)
+10. [Stale device detection](#10-stale-device-detection)
+11. [Z-Wave command classes handled](#11-z-wave-command-classes-handled)
+12. [Triggers and automations](#12-triggers-and-automations)
+13. [Troubleshooting](#13-troubleshooting)
+14. [Known limitations](#14-known-limitations)
+15. [Changelog](#15-changelog)
 
 ---
 
 ## 1. What this plugin does
 
-Indigo has excellent native Z-Wave support, but two common gaps arise:
+When Indigo includes a Z-Wave sensor it creates a native device based on what it recognises. That works well for the values Indigo knows about. But many sensors send additional data that Indigo ignores — a door/window sensor that also reports temperature, a multi-sensor where Indigo captures motion but not humidity or luminance, a sensor model that Indigo lists but only partially supports.
 
-**Gap 1 — Unrecognised hardware.** Newer sensors, less-common models, or multi-sensors may appear as "Unknown Z-Wave Device" with no states at all. Waiting for official Indigo support can take time.
-
-**Gap 2 — Partially-supported hardware.** Indigo may recognise the device and create a native device, but omit some of the sensor values it also sends — for example, a door/window sensor that Indigo handles correctly as a contact sensor but which also transmits temperature and humidity that Indigo ignores.
-
-This plugin solves both cases. It lets you create a proper Indigo plugin device with the right icon, meaningful states, and a human-readable value in the device list — by parsing the raw Z-Wave command bytes directly.
+This plugin fills that gap. You select the existing native Indigo device, choose the sensor type you want to capture (temperature, humidity, contact, motion, etc.), and the plugin creates a properly-typed Indigo device with the right icon, meaningful states, and a human-readable value in the device list.
 
 **Typical use cases:**
 
-- A door/window sensor that Indigo lists as "Unknown Z-Wave Device" with no states
-- A multi-sensor (motion + temperature + luminance) where Indigo creates no native devices
-- A sensor Indigo recognises as a contact device, but which also sends temperature or humidity you want to use in triggers
+- A NEO Coolcam door/window sensor that Indigo handles as a contact device, but which also sends temperature and humidity
+- A motion sensor that also reports luminance and CO2 that Indigo does not expose
+- Any multi-sensor where Indigo captures one value but you want the others
+
+**Reporting to Indigo developers:** The Simulate Z-Wave Report tool lets you feed raw byte sequences and see how the plugin parses them. If you want to help Mat and Jay (Indigo's authors) add native support for a sensor, enable debug logging, trigger the sensor, and send them the logged byte sequences.
 
 ---
 
 ## 2. How it works
 
-At startup the plugin calls `indigo.zwave.subscribeToIncoming()`. This tells Indigo to deliver every incoming Z-Wave byte sequence to the plugin's `zwaveCommandReceived()` callback — for **all** nodes, not just nodes the plugin owns.
+At startup the plugin calls `indigo.zwave.subscribeToIncoming()`. This tells Indigo to deliver every incoming Z-Wave byte sequence to the plugin's `zwaveCommandReceived()` callback — for all nodes, not just nodes the plugin owns.
 
 The plugin decodes the standard Z-Wave command classes directly from the bytes, writes the appropriate states on the matching plugin device, and keeps `lastUpdate`, `displayStatus`, and `onOffState` current at all times.
 
-**Node matching:** When a report arrives, the plugin looks up which plugin device(s) are configured for that node ID (and optionally that endpoint). Only matching devices are updated. A native Indigo device on the same node is unaffected — both the native device and the plugin device receive the same bytes simultaneously.
-
-**Parallel mode:** When you create a plugin device in parallel mode, you select the existing native Indigo device from a dropdown. The plugin reads the node ID from it automatically. There is nothing special the plugin needs to do at runtime — `subscribeToIncoming()` already ensures all bytes arrive regardless of node ownership.
+**Node matching:** When a report arrives, the plugin looks up which plugin device(s) are configured for that node ID (and optionally that endpoint). Only matching devices are updated. The native Indigo device on the same node is unaffected — both receive the same bytes simultaneously.
 
 ---
 
@@ -69,15 +64,11 @@ The plugin decodes the standard Z-Wave command classes directly from the bytes, 
 
 ---
 
-## 4. Creating a device — unrecognised node
+## 4. Creating a device
 
-Use this path when Indigo has **no** native device for your sensor.
+### Step 1 — Include the sensor in Indigo
 
-### Step 1 — Find the node ID
-
-In Indigo, open **Devices** and look at the Z-Wave devices for your sensor. The node ID is shown in the address field or device details. It is a number between 1 and 232 (e.g. 47).
-
-If the device is completely unrecognised, it may appear as "Unknown Z-Wave Device" in the Z-Wave device list. The node ID is still shown there.
+Include the sensor in your Z-Wave network through Indigo as normal. Indigo creates a native device for it. This native device is what the plugin reads the node ID from.
 
 ### Step 2 — Create the plugin device
 
@@ -88,82 +79,44 @@ If the device is completely unrecognised, it may appear as "Unknown Z-Wave Devic
 
 ### Step 3 — Configure the device
 
-Leave **Parallel mode** unchecked.
-
 | Field | Description |
 |---|---|
-| **Z-Wave Node ID** | The numeric node ID from Indigo's Z-Wave device list |
-| **Sensor Type** | Sets the icon and what the displayStatus shows — choose the type that matches the sensor's primary function |
+| **Native Indigo Z-Wave Device** | Select the existing Indigo device for this sensor — node ID is read automatically |
+| **Sensor Type** | Sets the icon and what the displayStatus shows — choose the type for the value you want to capture |
 | **Endpoint ID** | Optional. For multi-channel devices, enter the endpoint number (e.g. `1`, `2`, `3`). Leave blank or `0` to accept reports from all endpoints on this node. |
-
-### Step 4 — Save and test
-
-Click **Save**. The plugin device appears in your device list.
-
-Enable debug logging in Plugin Preferences and trigger the physical sensor — you will see the raw bytes in the Indigo log and the states updating in real time.
-
----
-
-## 5. Creating a device — parallel mode
-
-Use this path when Indigo **already has a native device** for the sensor but is missing some sensor values — for example, a door/window sensor that Indigo handles correctly as a contact device, but which also reports temperature that Indigo does not capture.
-
-### Step 1 — Identify the native Indigo device
-
-The native device already exists in your Indigo device list. Note its name so you can find it in the dropdown.
-
-### Step 2 — Create the plugin device
-
-1. Go to **Devices → New Device**
-2. Set Type to **Universal Z-Wave Sensor**
-3. Set Model to **Universal Z-Wave Sensor**
-4. Click **Edit Device Settings**
-
-### Step 3 — Configure in parallel mode
-
-Tick **Parallel mode — native Indigo device exists on this node**.
-
-| Field | Description |
-|---|---|
-| **Native Indigo Z-Wave Device** | Select the existing native Indigo device — the node ID is read from it automatically |
-| **Sensor Type** | Choose the type for the value you want to capture (e.g. Temperature Sensor, Humidity Sensor) |
-| **Endpoint ID** | Optional. For multi-channel devices only. |
-
-The node ID field is hidden in parallel mode and populated automatically from the selected native device.
 
 ### Step 4 — Name and save
 
-Name the device to reflect what it adds, e.g. `Bathroom Door Sensor (Temp)` or `Front Door (Bridge)`. Click **Save**.
+Name the device to reflect what it captures, e.g. `Bathroom Door (Temp)` or `Hall PIR (Humidity)`. Click **Save**.
 
-You can create multiple parallel plugin devices on the same node — one for temperature, one for humidity, etc.
+Enable debug logging in Plugin Preferences and trigger the physical sensor — you will see the raw bytes in the Indigo log and the states updating in real time.
 
-### What happens when Indigo adds native support
+### When Indigo adds native support
 
-When Indigo adds a full native definition for the sensor, delete the parallel plugin devices and update any triggers or action groups that reference them. This is a one-time task. Name your parallel devices to make them easy to identify.
-
----
-
-## 6. Multi-sensor devices — one node, multiple plugin devices
-
-Many Z-Wave multi-sensors report motion, temperature, and luminance all from the same node. Create one plugin device per sensor type, all with the same node ID, each with the appropriate sensor type selected.
-
-### Example — NEO Coolcam door/window + temperature + humidity sensor (Node 156)
-
-The sensor sends NOTIFICATION (door open/closed), SENSOR_MULTILEVEL (temperature), and SENSOR_MULTILEVEL (humidity) reports from node 156. Indigo has a native contact device for this node.
-
-Create three parallel plugin devices:
-
-| Plugin device name | Mode | Sensor Type | Endpoint ID |
-|---|---|---|---|
-| `Bathroom Door Contact` | Native Indigo device | — (use native device) | — |
-| `Bathroom Door Temperature` | Parallel | Temperature Sensor | (blank) |
-| `Bathroom Door Humidity` | Parallel | Humidity Sensor | (blank) |
-
-All three receive every report from node 156. Each only writes states relevant to its type.
+If Indigo adds full native support for the extra sensor values, delete the plugin devices and update any triggers or action groups that reference them. This is a one-time task.
 
 ---
 
-## 7. Multi-channel devices — endpoint routing
+## 5. Multi-sensor devices — one node, multiple plugin devices
+
+Many Z-Wave sensors report motion, temperature, humidity, and more from the same node. Create one plugin device per sensor type, all selecting the same native device, each with the appropriate sensor type.
+
+### Example — NEO Coolcam NAS-DS07ZE (door/window + temperature + humidity)
+
+Indigo creates a native contact device for this sensor. The sensor also sends temperature and humidity that Indigo ignores.
+
+Create two plugin devices, both selecting the same native Indigo device:
+
+| Plugin device name | Sensor Type | Endpoint ID |
+|---|---|---|
+| `Bathroom Door (Temp)` | Temperature Sensor | (blank) |
+| `Bathroom Door (Humidity)` | Humidity Sensor | (blank) |
+
+Both devices receive every report from the node. Each only writes states relevant to its type — the temperature device writes `temperature` from SENSOR_MULTILEVEL reports; the humidity device writes `humidity`. The native Indigo contact device continues to handle door open/closed as before.
+
+---
+
+## 6. Multi-channel devices — endpoint routing
 
 Some Z-Wave multi-sensors (e.g. Aeotec MultiSensor 6) use multi-channel addressing: each sensor type is exposed as a separate endpoint on the same node, using CC 0x60 MULTI_CHANNEL encapsulation.
 
@@ -171,13 +124,13 @@ The plugin unwraps CC 0x60 frames automatically and routes the inner payload to 
 
 ### Setup for a 3-in-1 sensor (motion ep 1, temperature ep 2, luminance ep 3) on node 42
 
-| Plugin device name | Node ID | Endpoint ID | Sensor Type |
-|---|---|---|---|
-| Hall Motion | 42 | 1 | Motion Sensor |
-| Hall Temperature | 42 | 2 | Temperature Sensor |
-| Hall Luminance | 42 | 3 | Luminance Sensor |
+| Plugin device name | Sensor Type | Endpoint ID |
+|---|---|---|
+| Hall Motion | Motion Sensor | 1 |
+| Hall Temperature | Temperature Sensor | 2 |
+| Hall Luminance | Luminance Sensor | 3 |
 
-Each plugin device only processes reports whose source endpoint matches its configured Endpoint ID. If the Endpoint ID is blank or `0`, the device accepts reports from all endpoints on the node.
+Each plugin device only processes reports whose source endpoint matches its configured Endpoint ID. If Endpoint ID is blank or `0`, the device accepts reports from all endpoints on the node.
 
 ### Checking the endpoint number
 
@@ -192,7 +145,7 @@ The `ep1` in the first line is the source endpoint number to use in the Endpoint
 
 ---
 
-## 8. Sensor types and device states
+## 7. Sensor types and device states
 
 ### Motion Sensor
 - **Icon:** Motion sensor (filled when detected)
@@ -253,7 +206,7 @@ The `ep1` in the first line is the source endpoint number to use in the Endpoint
 
 ---
 
-## 9. Plugin preferences
+## 8. Plugin preferences
 
 Access via **Plugins → Universal Z-Wave Sensor → Configure...**
 
@@ -267,11 +220,13 @@ Access via **Plugins → Universal Z-Wave Sensor → Configure...**
 
 ---
 
-## 10. Simulate Z-Wave Report
+## 9. Simulate Z-Wave Report
 
 **Plugins → Universal Z-Wave Sensor → Simulate Z-Wave Report...**
 
 Select a plugin device, enter space-separated hex bytes, and click **Send**. The bytes are fed directly into the parser as if the real hardware had sent them. The dialog stays open so you can send multiple sequences in one session without reopening it.
+
+This tool is also useful for capturing raw bytes from sensors and sharing them with the Indigo developers (Mat and Jay) to help them add or improve native support.
 
 ### Common byte sequences
 
@@ -310,7 +265,7 @@ Select a plugin device, enter space-separated hex bytes, and click **Send**. The
 
 ---
 
-## 11. Stale device detection
+## 10. Stale device detection
 
 The plugin checks all plugin devices every 60 seconds. If a device's `lastUpdate` timestamp is older than the configured stale threshold:
 
@@ -335,11 +290,9 @@ When any Z-Wave report arrives from the device:
 
 ---
 
-## 12. Z-Wave command classes handled
+## 11. Z-Wave command classes handled
 
 ### SENSOR_MULTILEVEL (0x31) — report 0x05
-
-Decodes continuous sensor values. The sensor type byte in the report determines the state written.
 
 | Sensor type byte | State written | Units |
 |---|---|---|
@@ -389,8 +342,6 @@ The plugin auto-detects byte order: if raw[5] is `0x00` or `0xFF` the frame is Z
 
 ### METER (0x32) — report 0x02
 
-Electric meter (type 0x01) scales:
-
 | Scale | State written | Unit |
 |---|---|---|
 | 0 | `kwh` | kWh |
@@ -417,22 +368,20 @@ Legacy on/off. `0xFF` = on (99), `0x00` = off. Writes `dimLevel` and `onOffState
 
 ### MULTI_CHANNEL (0x60) — encapsulation 0x0D
 
-Multi-channel frames are unwrapped transparently. The source endpoint is extracted and used to route the inner payload to the correct plugin device (based on each device's configured Endpoint ID). The inner command class is then processed normally.
+Multi-channel frames are unwrapped transparently. The source endpoint is extracted and used to route the inner payload to the correct plugin device. The inner command class is then processed normally.
 
 ### WAKE_UP (0x84)
 
 | Command | Bytes | Action |
 |---|---|---|
-| WAKE_UP_NOTIFICATION (0x07) | `84 07` | Touches `lastUpdate`; marks device online; logged as debug |
+| WAKE_UP_NOTIFICATION (0x07) | `84 07` | Touches `lastUpdate`; marks device online |
 | WAKE_UP_INTERVAL_REPORT (0x06) | `84 06 b1 b2 b3 node` | Stores interval in `wakeUpInterval` state (seconds) |
 
 ---
 
-## 13. Triggers and automations
+## 12. Triggers and automations
 
 Every state on the plugin device can be used as a trigger in Indigo.
-
-**Useful trigger states:**
 
 | Use case | Trigger on |
 |---|---|
@@ -445,19 +394,18 @@ Every state on the plugin device can be used as a trigger in Indigo.
 | Smoke alarm | `smoke` changes to True |
 | Device goes offline | `deviceOnline` changes to False |
 | Device comes back online | `deviceOnline` changes to True |
-| Display value changes | `displayStatus` changes |
 
 The `onOffState` is set on all device types wherever meaningful, so standard Indigo triggers like "device turns on" also work.
 
 ---
 
-## 14. Troubleshooting
+## 13. Troubleshooting
 
 ### No states appear after creating the device
 
-**Cause:** Device may not be sending reports, or the command class is not one the plugin handles.
+**Cause:** The sensor may not be sending the command class you expect, or debug logging will show what is arriving.
 
-**Fix:** Enable debug logging and trigger the device. If you see `CC=0xXX` in the log, the report is arriving. If you see `Unhandled CC=0xXX`, that class needs to be added.
+**Fix:** Enable debug logging and trigger the device. Look for `CC=0xXX` entries in the log — they confirm reports are arriving. If you see `Unhandled CC=0xXX`, that class is not yet parsed.
 
 ### Plugin device shows stale value after Indigo restart
 
@@ -465,41 +413,29 @@ The `onOffState` is set on all device types wherever meaningful, so standard Ind
 
 **Fix:** Physically trigger the device to force a report. The `lastUpdate` timestamp shows how old the current value is.
 
-### "No valid Node ID configured" error in log
-
-**Cause:** The Node ID field was left blank or contains a non-numeric value.
-
-**Fix:** Edit the device, enter the numeric node ID (1–232), and save.
-
-### Parallel mode dropdown shows no devices
+### Dropdown shows no devices
 
 **Cause:** No Indigo devices with a numeric Z-Wave address were found.
 
-**Fix:** The dropdown only lists devices that have a valid node ID in their address property. Ensure the native Indigo Z-Wave device is enabled and has been successfully included in the Z-Wave network. If needed, use the non-parallel path and enter the node ID manually.
+**Fix:** The dropdown lists devices that have a valid node ID in their address property. Ensure the native Indigo Z-Wave device is enabled and has been successfully included in the Z-Wave network.
 
 ### Multiple plugin devices on the same node are updating from wrong sources
 
-**Cause:** Without endpoint IDs set, all plugin devices on a node receive all reports from that node. A temperature reading will be written to every plugin device type, including the motion device.
+**Cause:** Without endpoint IDs set, all plugin devices on a node receive all reports from that node.
 
-**Fix:** If the hardware uses multi-channel addressing (CC 0x60), set Endpoint ID on each plugin device. If the hardware does not use endpoints, create only one plugin device per state type and rely on each device type only writing relevant states.
+**Fix:** If the hardware uses multi-channel addressing (CC 0x60), set Endpoint ID on each plugin device. If the hardware does not use endpoints, rely on each device type only writing relevant states — a temperature device will not write contact states, and vice versa.
 
 ### Temperature is showing in the wrong unit
 
-**Cause:** Temperature unit preference is set to the opposite of what you want.
-
-**Fix:** Go to **Plugins → Universal Z-Wave Sensor → Configure...** and change Temperature unit to degC or degF. Existing stored values will update on the next report from the device.
+**Fix:** Go to **Plugins → Universal Z-Wave Sensor → Configure...** and change Temperature unit. Existing stored values will update on the next report.
 
 ### Log is flooded with debug output
 
 **Fix:** Disable **Enable debug logging** in Plugin Preferences.
 
-### Stale warning keeps repeating
-
-**Cause:** This should not happen — warnings are one-shot per stale period. If it repeats, check that the plugin has not been reloaded between warnings (each reload resets the stale flag tracker).
-
 ---
 
-## 15. Known limitations
+## 14. Known limitations
 
 | Limitation | Detail |
 |---|---|
@@ -510,12 +446,12 @@ The `onOffState` is set on all device types wherever meaningful, so standard Ind
 
 ---
 
-## 16. Changelog
+## 15. Changelog
 
 | Version | Date | Summary |
 |---|---|---|
-| **3.1** | 22-Mar-2026 | Parallel mode: plugin devices coexist alongside native Indigo devices; `indigo.zwave.subscribeToIncoming()` called at startup so all Z-Wave bytes received regardless of node ownership; native device picker in Devices.xml; NOTIFICATION byte order auto-detection (spec and reversed-order hardware both handled); 98 tests |
-| **3.0** | 21-Mar-2026 | Multi-channel endpoint routing (CC 0x60); stale device detection with `deviceOnline` state; temperature unit preference (degC/degF); wake-up interval tracking (`wakeUpInterval` state); Simulate dialog stays open; .gitignore added; 80 tests |
-| **2.2** | 21-Mar-2026 | Added Simulate Z-Wave Report menu item for end-to-end testing without unknown hardware |
-| **2.0** | 21-Mar-2026 | Removed known-device mirror path (subscribeToChanges); plugin now uses raw Z-Wave bytes only |
+| **3.2** | 22-Mar-2026 | Simplified to single-path UI — always select native Indigo device from dropdown; manual node ID entry removed; 92 tests |
+| **3.1** | 22-Mar-2026 | `indigo.zwave.subscribeToIncoming()` at startup so all Z-Wave bytes received regardless of node ownership; NOTIFICATION byte order auto-detection; native device picker added |
+| **3.0** | 21-Mar-2026 | Multi-channel endpoint routing (CC 0x60); stale device detection; temperature unit preference; wake-up interval tracking; Simulate dialog stays open |
+| **2.0** | 21-Mar-2026 | Removed known-device mirror path; plugin now uses raw Z-Wave bytes only |
 | **1.0** | 20-Mar-2026 | Initial release |

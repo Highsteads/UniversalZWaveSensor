@@ -1,14 +1,13 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
 # Filename:    plugin.py
-# Description: Universal Z-Wave Sensor - creates proper Indigo plugin devices
-#              for any Z-Wave sensor, including those Indigo partially or fully
-#              recognises. Uses subscribeToIncoming() to receive ALL Z-Wave bytes
-#              regardless of native device ownership. Supports parallel mode:
-#              plugin devices alongside existing native Indigo devices.
+# Description: Universal Z-Wave Sensor - creates companion plugin devices
+#              alongside existing Indigo Z-Wave devices, capturing sensor values
+#              (temperature, humidity, contact, etc.) that Indigo does not expose
+#              natively. Uses subscribeToIncoming() to receive ALL Z-Wave bytes.
 # Author:      CliveS & Claude Sonnet 4.6
-# Date:        21-03-2026
-# Version:     3.1
+# Date:        22-03-2026
+# Version:     3.2
 
 import indigo
 import struct
@@ -136,7 +135,7 @@ class Plugin(indigo.PluginBase):
     # ==========================================================================
 
     def startup(self):
-        self.logger.info("Universal Z-Wave Sensor plugin starting v3.1")
+        self.logger.info("Universal Z-Wave Sensor plugin starting v3.2")
         indigo.zwave.subscribeToIncoming()   # receive ALL Z-Wave bytes, including nodes with native Indigo devices
         self._rebuild_node_map()
         nodes = sorted(self.node_to_device.keys())
@@ -199,55 +198,29 @@ class Plugin(indigo.PluginBase):
             self.logger.info(f"Stopped listening on Node {node_id}")
 
     def validateDeviceConfigUi(self, values_dict, type_id, device_id):
-        errors      = indigo.Dict()
-        use_native  = values_dict.get("useNativeDevice", False)
+        errors = indigo.Dict()
 
-        if use_native:
-            # Parallel mode: read node ID from the selected native Indigo Z-Wave device
-            native_id_str = values_dict.get("sourceDeviceId", "").strip()
-            if not native_id_str or native_id_str == "none":
-                errors["sourceDeviceId"] = "Select the native Indigo Z-Wave device to pair with"
-            else:
-                try:
-                    native_dev = indigo.devices[int(native_id_str)]
-                    node_str   = str(native_dev.ownerProps.get("address", "")).strip()
-                    if not node_str.isdigit() or not (1 <= int(node_str) <= 232):
-                        errors["sourceDeviceId"] = (
-                            f"Could not read a valid Z-Wave node ID from '{native_dev.name}' "
-                            f"(address='{node_str}')"
-                        )
-                    else:
-                        values_dict["nodeId"]  = node_str
-                        values_dict["address"] = node_str
-                        self.logger.info(
-                            f"Parallel mode: node {node_str} from native device '{native_dev.name}'"
-                        )
-                except (KeyError, ValueError) as e:
-                    errors["sourceDeviceId"] = f"Could not read node ID from selected device: {e}"
+        # Read node ID from the selected native Indigo Z-Wave device
+        native_id_str = values_dict.get("sourceDeviceId", "").strip()
+        if not native_id_str or native_id_str == "none":
+            errors["sourceDeviceId"] = "Select the native Indigo Z-Wave device for this sensor"
         else:
-            # Manual mode: user enters node ID directly
-            node_str = values_dict.get("nodeId", "").strip()
-            if not node_str.isdigit() or not (1 <= int(node_str) <= 232):
-                errors["nodeId"] = "Node ID must be a whole number between 1 and 232"
-            else:
-                values_dict["address"] = node_str
-                # Inform (not block) if Indigo already has a native device on this node.
-                # subscribeToIncoming() means we receive bytes for ALL nodes — parallel mode works fine.
-                node_id     = int(node_str)
-                known_names = [
-                    dev.name for dev in indigo.devices
-                    if dev.pluginId != self.pluginId
-                    and dev.id != device_id
-                    and str(getattr(dev, "address", "")) == node_str
-                ]
-                if known_names:
-                    names_str = ", ".join(f"'{n}'" for n in known_names[:3])
-                    if len(known_names) > 3:
-                        names_str += f" (+{len(known_names) - 3} more)"
-                    self.logger.info(
-                        f"Node {node_id} also has native Indigo device(s): {names_str}. "
-                        f"Parallel mode active — plugin receives all Z-Wave bytes via subscribeToIncoming()."
+            try:
+                native_dev = indigo.devices[int(native_id_str)]
+                node_str   = str(native_dev.ownerProps.get("address", "")).strip()
+                if not node_str.isdigit() or not (1 <= int(node_str) <= 232):
+                    errors["sourceDeviceId"] = (
+                        f"Could not read a valid Z-Wave node ID from '{native_dev.name}' "
+                        f"(address='{node_str}')"
                     )
+                else:
+                    values_dict["nodeId"]  = node_str
+                    values_dict["address"] = node_str
+                    self.logger.info(
+                        f"Device configured: node {node_str} from '{native_dev.name}'"
+                    )
+            except (KeyError, ValueError) as e:
+                errors["sourceDeviceId"] = f"Could not read node ID from selected device: {e}"
 
         # Validate optional endpoint ID
         ep_str = values_dict.get("endpointId", "").strip()

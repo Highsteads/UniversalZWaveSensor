@@ -5,8 +5,8 @@
 <dict>
     <key>CFBundleDisplayName</key>        <string>Universal Z-Wave Sensor</string>
     <key>CFBundleIdentifier</key>         <string>com.clives.universal-zwave-sensor</string>
-    <key>CFBundleVersion</key>            <string>3.1</string>
-    <key>CFBundleShortVersionString</key> <string>3.1</string>
+    <key>CFBundleVersion</key>            <string>3.2</string>
+    <key>CFBundleShortVersionString</key> <string>3.2</string>
     <key>IOMigrationVersion</key>         <integer>3</integer>
     <key>ServerApiVersion</key>           <string>3.0</string>
 </dict>
