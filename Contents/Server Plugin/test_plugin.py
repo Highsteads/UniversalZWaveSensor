@@ -1,14 +1,14 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
 # Filename:    test_plugin.py
-# Description: Mock test suite for Universal Z-Wave Sensor plugin v3.2
+# Description: Mock test suite for Universal Z-Wave Sensor plugin v3.6
 #              Covers all raw Z-Wave parsers, validateDeviceConfigUi (native
 #              device picker), subscribeToIncoming(), NOTIFICATION byte order
 #              auto-detection, multi-channel routing, stale detection,
 #              temperature units, and wake-up interval handling.
 # Author:      CliveS & Claude Sonnet 4.6
 # Date:        22-03-2026
-# Version:     3.2
+# Version:     3.6
 #
 # Run from the Server Plugin directory:
 #   python3 test_plugin.py -v
@@ -1094,6 +1094,87 @@ class TestExtractNodeAndBytes(unittest.TestCase):
         frame = [0x01, 0x08, 0x00, 0x04, 0x00, 0x6A]   # header only, no cmd_len byte
         node_id, raw = self.p._extract_node_and_bytes(self._cmd(106, frame))
         self.assertEqual(raw, frame)   # unchanged — no crash
+
+
+# ==============================================================================
+# Tests: _init_display_status — startup displayStatus initialisation
+# ==============================================================================
+
+class TestInitDisplayStatus(unittest.TestCase):
+    """
+    _init_display_status() must set displayStatus from existing state values
+    at startup/reload so stale values (e.g. "detected" on a Temperature device
+    left over from a pre-v3.5 motion event) are corrected immediately.
+    """
+
+    def setUp(self):
+        self.p = make_plugin()
+
+    def _dev(self, sensor_type, states):
+        return MockDevice(1, "Test", plugin_props={"sensorType": sensor_type},
+                          states=states)
+
+    def test_temperature_sets_display_status(self):
+        dev = self._dev("temperature", {"temperature": 22.3})
+        self.p._init_display_status(dev)
+        self.assertEqual(dev.states["displayStatus"], "22.3 degC")
+
+    def test_temperature_degF_pref_uses_unit(self):
+        self.p.temp_unit = "degF"
+        dev = self._dev("temperature", {"temperature": 72.1})
+        self.p._init_display_status(dev)
+        self.assertEqual(dev.states["displayStatus"], "72.1 degF")
+
+    def test_temperature_no_existing_value_leaves_display_status(self):
+        dev = self._dev("temperature", {"temperature": None})
+        self.p._init_display_status(dev)
+        self.assertNotIn("displayStatus", dev.state_writes)
+
+    def test_humidity_sets_display_status(self):
+        dev = self._dev("humidity", {"humidity": 65.0})
+        self.p._init_display_status(dev)
+        self.assertEqual(dev.states["displayStatus"], "65.0 %")
+
+    def test_luminance_sets_display_status(self):
+        dev = self._dev("luminance", {"luminance": 450.0})
+        self.p._init_display_status(dev)
+        self.assertEqual(dev.states["displayStatus"], "450.0 lux")
+
+    def test_motion_detected_sets_display_status(self):
+        dev = self._dev("motion", {"motion": True})
+        self.p._init_display_status(dev)
+        self.assertEqual(dev.states["displayStatus"], "detected")
+
+    def test_motion_clear_sets_display_status(self):
+        dev = self._dev("motion", {"motion": False})
+        self.p._init_display_status(dev)
+        self.assertEqual(dev.states["displayStatus"], "clear")
+
+    def test_contact_open_sets_display_status(self):
+        dev = self._dev("contact", {"contact": True})
+        self.p._init_display_status(dev)
+        self.assertEqual(dev.states["displayStatus"], "open")
+
+    def test_contact_closed_sets_display_status(self):
+        dev = self._dev("contact", {"contact": False})
+        self.p._init_display_status(dev)
+        self.assertEqual(dev.states["displayStatus"], "closed")
+
+    def test_energy_sets_display_status(self):
+        dev = self._dev("energy", {"watts": 1500.0})
+        self.p._init_display_status(dev)
+        self.assertEqual(dev.states["displayStatus"], "1500.0 W")
+
+    def test_generic_leaves_display_status_unchanged(self):
+        dev = self._dev("generic", {"onOffState": True})
+        self.p._init_display_status(dev)
+        self.assertNotIn("displayStatus", dev.state_writes)
+
+    def test_temperature_stale_detected_overwritten(self):
+        """Simulates the v3.5 regression: Temperature device has stale 'detected' displayStatus."""
+        dev = self._dev("temperature", {"temperature": 22.3, "displayStatus": "detected"})
+        self.p._init_display_status(dev)
+        self.assertEqual(dev.states["displayStatus"], "22.3 degC")
 
 
 # ==============================================================================

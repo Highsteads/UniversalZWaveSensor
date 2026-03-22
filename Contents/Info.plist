@@ -1,13 +1,34 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleDisplayName</key>        <string>Universal Z-Wave Sensor</string>
-    <key>CFBundleIdentifier</key>         <string>com.clives.universal-zwave-sensor</string>
-    <key>CFBundleVersion</key>            <string>3.5</string>
-    <key>CFBundleShortVersionString</key> <string>3.5</string>
-    <key>IOMigrationVersion</key>         <integer>3</integer>
-    <key>ServerApiVersion</key>           <string>3.0</string>
+	<key>PluginVersion</key>
+	<string>3.9</string>
+	<key>ServerApiVersion</key>
+	<string>3.0</string>
+	<key>IwsApiVersion</key>
+	<string>1.0.0</string>
+	<key>IOMigrationVersion</key>
+	<integer>3</integer>
+	<key>CFBundleDisplayName</key>
+	<string>Universal Z-Wave Sensor</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.clives.universal-zwave-sensor</string>
+	<key>CFBundleVersion</key>
+	<string>3.9</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>https://github.com/Highsteads/UniversalZWaveSensor</string>
+		</dict>
+	</array>
+	<key>GithubInfo</key>
+	<dict>
+		<key>GithubRepo</key>
+		<string>UniversalZWaveSensor</string>
+		<key>GithubUser</key>
+		<string>Highsteads</string>
+	</dict>
 </dict>
 </plist>

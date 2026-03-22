@@ -1,6 +1,6 @@
 # Universal Z-Wave Sensor Plugin — User Manual
 
-**Version 3.3** | Indigo 2025.1 | Author: CliveS & Claude Sonnet 4.6
+**Version 3.9** | Indigo 2025.1 | Author: CliveS & Claude Sonnet 4.6
 **Last updated:** 22-Mar-2026
 
 ---
@@ -235,8 +235,8 @@ This tool is also useful for capturing raw bytes from sensors and sharing them w
 | `31 05 01 22 00 D7` | Temperature 21.5 degC |
 | `31 05 03 0A 01 C2` | Luminance 450 lux |
 | `31 05 05 01 41` | Humidity 65% |
-| `71 05 00 00 00 FF 07 07 00` | Motion detected (NOTIFICATION) |
-| `71 05 00 00 00 FF 07 08 00` | Motion cleared |
+| `71 05 00 00 00 FF 07 07 00` | Motion detected (NOTIFICATION, location provided) |
+| `71 05 00 00 00 FF 07 08 00` | Motion detected (NOTIFICATION, unknown location) |
 | `71 05 00 00 00 FF 06 16 00` | Door opened |
 | `71 05 00 00 00 FF 06 17 00` | Door closed |
 | `80 03 55` | Battery 85% |
@@ -315,7 +315,7 @@ Precision and size are decoded from the `prec_scale_size` byte. Handles 1, 2, an
 | 0x03 | `coAlarm` | True=alarm, False=clear |
 | 0x04 | `waterLeak` | True=leak, False=clear |
 | 0x06 | `tamper` | True=tamper, False=clear |
-| 0x08 / 0x09 / 0x0B | `motion` | True=detected, False=clear |
+| 0x08 / 0x09 / 0x0B / 0x0C | `motion` | True=detected, False=clear |
 | 0x0A | `contact` | True=open, False=closed |
 
 v1 frames (no sensor type byte) fall back to `onOffState`.
@@ -326,10 +326,10 @@ The plugin auto-detects byte order: if raw[5] is `0x00` or `0xFF` the frame is Z
 
 | Notification type | Event | State written |
 |---|---|---|
-| HOME_SECURITY (0x07) | 0x07 Motion detected | `motion=True`, `onOffState=True` |
-| HOME_SECURITY (0x07) | 0x08 Motion cleared | `motion=False`, `onOffState=False` |
+| HOME_SECURITY (0x07) | 0x07 Motion detected (location provided) | `motion=True`, `onOffState=True` |
+| HOME_SECURITY (0x07) | 0x08 Motion detected (unknown location) | `motion=True`, `onOffState=True` |
 | HOME_SECURITY (0x07) | 0x03/0x09 Tamper | `tamper=True` |
-| HOME_SECURITY (0x07) | 0x04 Tamper cleared | `tamper=False` |
+| HOME_SECURITY (0x07) | 0x00 Idle (all clear) | clears `motion` and `tamper` |
 | HOME_SECURITY (0x07) | 0x00 Idle | clears `motion` and `tamper` |
 | ACCESS_CONTROL (0x06) | 0x16 Door open | `contact=True`, `onOffState=True` |
 | ACCESS_CONTROL (0x06) | 0x17 Door closed | `contact=False`, `onOffState=False` |
@@ -450,6 +450,12 @@ The `onOffState` is set on all device types wherever meaningful, so standard Ind
 
 | Version | Date | Summary |
 |---|---|---|
+| **3.9** | 22-Mar-2026 | Startup banner in `__init__()` using raw constructor params (display_name, version, plugin_id); Info.plist standardised — PluginVersion key added (fixes blank version), IwsApiVersion, CFBundleURLTypes, GithubInfo added |
+| **3.8** | 22-Mar-2026 | SENSOR_BINARY (CC 0x30) logging moved to DEBUG always — NOTIFICATION is the primary INFO source for motion events |
+| **3.7** | 22-Mar-2026 | Log verbosity reduced — INFO only for report types matching the device's sensorType; secondary fan-out (e.g. temperature update on a Lux device) moved to DEBUG; HS_IDLE always DEBUG |
+| **3.6** | 22-Mar-2026 | `_init_display_status()` — corrects stale displayStatus on plugin reload/restart; 98 tests |
+| **3.5** | 22-Mar-2026 | displayStatus guards — motion events no longer overwrite displayStatus on Temperature/Lux/other non-motion device types |
+| **3.4** | 22-Mar-2026 | Fixed NOTIFICATION event 0x08 (motion detected unknown location, not cleared); SENSOR_BINARY type 0x0C (motion) added to lookup |
 | **3.3** | 22-Mar-2026 | Fixed serial API frame unwrapping — `subscribeToIncoming()` delivers the full Z-Wave serial frame; `_extract_node_and_bytes()` now strips the SOF+header to expose the command payload; 96 tests |
 | **3.2** | 22-Mar-2026 | Simplified to single-path UI — always select native Indigo device from dropdown; manual node ID entry removed |
 | **3.1** | 22-Mar-2026 | `indigo.zwave.subscribeToIncoming()` at startup so all Z-Wave bytes received regardless of node ownership; NOTIFICATION byte order auto-detection; native device picker added |

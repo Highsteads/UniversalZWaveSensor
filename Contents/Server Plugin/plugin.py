@@ -7,10 +7,12 @@
 #              natively. Uses subscribeToIncoming() to receive ALL Z-Wave bytes.
 # Author:      CliveS & Claude Sonnet 4.6
 # Date:        22-03-2026
-# Version:     3.5
+# Version:     3.9
 
 import indigo
 import struct
+import sys
+import platform
 from datetime import datetime, timedelta
 
 
@@ -131,12 +133,29 @@ class Plugin(indigo.PluginBase):
         # Set of device IDs currently flagged as stale (avoids repeated log warnings)
         self.stale_device_ids: set[int] = set()
 
+        # Banner logged here in __init__ using raw constructor params — the only reliable
+        # point; PluginBase overwrites self.pluginVersion/pluginDisplayName by startup()
+        title = " Starting Universal Z-Wave Sensor Plugin "
+        width = 110
+        col   = 28
+        self.logger.info("=" * width)
+        self.logger.info(title.center(width, "="))
+        self.logger.info("=" * width)
+        self.logger.info(f"{'Plugin Name:':<{col}} {display_name}")
+        self.logger.info(f"{'Plugin Version:':<{col}} {version}")
+        self.logger.info(f"{'Plugin ID:':<{col}} {plugin_id}")
+        self.logger.info(f"{'Indigo Version:':<{col}} {indigo.server.version}")
+        self.logger.info(f"{'Indigo API Version:':<{col}} {indigo.server.apiVersion}")
+        self.logger.info(f"{'Architecture:':<{col}} {platform.machine()}")
+        self.logger.info(f"{'Python Version:':<{col}} {platform.python_version()}")
+        self.logger.info(f"{'macOS Version:':<{col}} {platform.mac_ver()[0]}")
+        self.logger.info("=" * width)
+
     # ==========================================================================
     # Plugin lifecycle
     # ==========================================================================
 
     def startup(self):
-        self.logger.info("Universal Z-Wave Sensor plugin starting v3.5")
         indigo.zwave.subscribeToIncoming()   # receive ALL Z-Wave bytes, including nodes with native Indigo devices
         self._rebuild_node_map()
         nodes = sorted(self.node_to_device.keys())
@@ -172,9 +191,57 @@ class Plugin(indigo.PluginBase):
     # Device lifecycle
     # ==========================================================================
 
+    def _init_display_status(self, device):
+        """Set displayStatus from existing state values at startup / reload.
+
+        Prevents stale displayStatus after a plugin reload — e.g. a Temperature
+        device that was incorrectly showing "detected" because a motion event
+        set it before v3.5 fixed the displayStatus guards.
+        """
+        dev_type = device.pluginProps.get("sensorType", "generic")
+        states   = device.states
+
+        if dev_type == "temperature":
+            val = states.get("temperature")
+            if val not in (None, ""):
+                unit = self.temp_unit
+                device.updateStateOnServer("displayStatus", value=f"{val} {unit}")
+
+        elif dev_type == "humidity":
+            val = states.get("humidity")
+            if val not in (None, ""):
+                device.updateStateOnServer("displayStatus", value=f"{val} %")
+
+        elif dev_type == "luminance":
+            val = states.get("luminance")
+            if val not in (None, ""):
+                device.updateStateOnServer("displayStatus", value=f"{val} lux")
+
+        elif dev_type == "motion":
+            motion = states.get("motion")
+            if motion is not None:
+                device.updateStateOnServer(
+                    "displayStatus", value="detected" if motion else "clear"
+                )
+
+        elif dev_type == "contact":
+            contact = states.get("contact")
+            if contact is not None:
+                device.updateStateOnServer(
+                    "displayStatus", value="open" if contact else "closed"
+                )
+
+        elif dev_type == "energy":
+            watts = states.get("watts")
+            if watts not in (None, ""):
+                device.updateStateOnServer("displayStatus", value=f"{watts} W")
+
+        # generic: leave displayStatus as-is (onOffState drives it at runtime)
+
     def deviceStartComm(self, device):
         self.logger.info(f"Starting: '{device.name}'")
         device.stateListOrDisplayStateIdChanged()
+        self._init_display_status(device)
         node_id = self._get_node_id(device)
         if node_id:
             if node_id not in self.node_to_device:
@@ -432,11 +499,14 @@ class Plugin(indigo.PluginBase):
 
         dp     = max(0, precision)
         ui_str = f"{value:.{dp}f} {unit}".strip()
-        self.logger.info(f"{device.name}: {state_key} = {ui_str}")
+
+        # Only log at INFO when this report matches the device's primary sensor type;
+        # secondary values (e.g. temperature on a Lux device) log at DEBUG only.
+        dev_sensor_type = device.pluginProps.get("sensorType", "generic")
+        _log = self.logger.info if dev_sensor_type == state_key else self.logger.debug
+        _log(f"{device.name}: {state_key} = {ui_str}")
         device.updateStateOnServer(state_key, value=round(value, dp), uiValue=ui_str)
 
-        # Update displayStatus when this report matches the device's primary sensor type
-        dev_sensor_type = device.pluginProps.get("sensorType", "generic")
         if dev_sensor_type == state_key:
             device.updateStateOnServer("displayStatus", value=ui_str)
             _zw_icon_map = {
@@ -476,14 +546,17 @@ class Plugin(indigo.PluginBase):
         on_label, off_label = labels.get(state_key, ("active", "idle"))
         label = on_label if is_active else off_label
 
-        self.logger.info(f"{device.name}: {state_key} = {label}")
+        # SENSOR_BINARY is the older CC 0x30 format; sensors that also send NOTIFICATION
+        # (CC 0x71) will produce a duplicate INFO line. Always log SENSOR_BINARY at DEBUG
+        # to keep the event log clean — NOTIFICATION provides the primary INFO message.
+        dev_type   = device.pluginProps.get("sensorType", "generic")
+        is_primary = (dev_type == "generic"
+                      or (state_key == "motion"  and dev_type == "motion")
+                      or (state_key == "contact" and dev_type == "contact"))
+        self.logger.debug(f"{device.name}: {state_key} = {label}")
         device.updateStateOnServer(state_key,    value=is_active, uiValue=label)
         device.updateStateOnServer("onOffState", value=is_active)
-        # Only update displayStatus if this state matches the device's primary type
-        dev_type = device.pluginProps.get("sensorType", "generic")
-        if (dev_type == "generic"
-                or (state_key == "motion"  and dev_type == "motion")
-                or (state_key == "contact" and dev_type == "contact")):
+        if is_primary:
             device.updateStateOnServer("displayStatus", value=label)
         self._touch(device)
         return True
@@ -513,19 +586,20 @@ class Plugin(indigo.PluginBase):
         if notif_type == NOTIF_HOME_SECURITY:
             _dt           = device.pluginProps.get("sensorType", "generic")
             _motion_disp  = _dt in ("motion", "generic")
+            _log          = self.logger.info if _motion_disp else self.logger.debug
             if notif_event in (HS_MOTION_DETECTED, HS_MOTION_DETECTED_NL):
-                self.logger.info(f"{device.name}: Motion DETECTED")
+                _log(f"{device.name}: Motion DETECTED")
                 device.updateStateOnServer("motion",     value=True,  uiValue="detected")
                 device.updateStateOnServer("onOffState", value=True)
                 if _motion_disp:
                     device.updateStateOnServer("displayStatus", value="detected")
             elif notif_event in (HS_TAMPER, HS_TAMPER_ALT):
-                self.logger.info(f"{device.name}: Tamper DETECTED")
+                _log(f"{device.name}: Tamper DETECTED")
                 device.updateStateOnServer("tamper",     value=True,  uiValue="tamper")
                 if _motion_disp:
                     device.updateStateOnServer("displayStatus", value="tamper")
             elif notif_event == HS_IDLE:
-                self.logger.info(f"{device.name}: Home security idle (all clear)")
+                self.logger.debug(f"{device.name}: Home security idle (all clear)")
                 device.updateStateOnServer("motion",     value=False, uiValue="clear")
                 device.updateStateOnServer("tamper",     value=False, uiValue="clear")
                 device.updateStateOnServer("onOffState", value=False)
@@ -542,14 +616,15 @@ class Plugin(indigo.PluginBase):
         elif notif_type == NOTIF_ACCESS_CONTROL:
             _dt            = device.pluginProps.get("sensorType", "generic")
             _contact_disp  = _dt in ("contact", "generic")
+            _log           = self.logger.info if _contact_disp else self.logger.debug
             if notif_event == AC_DOOR_OPEN:
-                self.logger.info(f"{device.name}: Door/Window OPEN")
+                _log(f"{device.name}: Door/Window OPEN")
                 device.updateStateOnServer("contact",    value=True,  uiValue="open")
                 device.updateStateOnServer("onOffState", value=True)
                 if _contact_disp:
                     device.updateStateOnServer("displayStatus", value="open")
             elif notif_event == AC_DOOR_CLOSED:
-                self.logger.info(f"{device.name}: Door/Window CLOSED")
+                _log(f"{device.name}: Door/Window CLOSED")
                 device.updateStateOnServer("contact",    value=False, uiValue="closed")
                 device.updateStateOnServer("onOffState", value=False)
                 if _contact_disp:

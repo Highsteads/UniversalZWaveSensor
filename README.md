@@ -1,6 +1,6 @@
 # Universal Z-Wave Sensor — Indigo Plugin
 
-**Version 3.3** | Indigo 2025.1 | Python 3.11
+**Version 3.9** | Indigo 2025.1 | Python 3.11
 
 Creates companion plugin devices alongside your existing Indigo Z-Wave devices, exposing sensor values that Indigo does not capture natively — temperature, humidity, luminance, contact state, and more.
 
@@ -170,7 +170,7 @@ cd "UniversalZWaveSensor.indigoPlugin/Contents/Server Plugin"
 python3 test_plugin.py -v
 ```
 
-No Indigo installation required — `indigo` is fully mocked. All 96 tests should pass.
+No Indigo installation required — `indigo` is fully mocked. All 110 tests should pass.
 
 ---
 
@@ -178,6 +178,12 @@ No Indigo installation required — `indigo` is fully mocked. All 96 tests shoul
 
 | Version | Date | Changes |
 |---|---|---|
+| 3.9 | 22-Mar-2026 | Startup banner in `__init__()` using raw constructor params; Info.plist standardised (PluginVersion key added — fixes blank version, IwsApiVersion, CFBundleURLTypes, GithubInfo) |
+| 3.8 | 22-Mar-2026 | SENSOR_BINARY (CC 0x30) logging moved to DEBUG always — NOTIFICATION is the primary INFO source for motion events |
+| 3.7 | 22-Mar-2026 | Log verbosity reduced — INFO only for report types matching device sensorType; secondary fan-out and HS_IDLE moved to DEBUG |
+| 3.6 | 22-Mar-2026 | Startup displayStatus initialisation — _init_display_status() called in deviceStartComm(); corrects stale values (e.g. "detected" on Temperature device) immediately on plugin reload; 110 tests |
+| 3.5 | 22-Mar-2026 | displayStatus guard per sensorType — motion/NOTIFICATION/SENSOR_BINARY reports no longer overwrite displayStatus on Temperature or Lux devices sharing the same node |
+| 3.4 | 22-Mar-2026 | NOTIFICATION event 0x08 = motion DETECTED (not cleared); SENSOR_BINARY type 0x0C added to lookup table |
 | 3.3 | 22-Mar-2026 | Fixed serial API frame unwrapping — subscribeToIncoming() delivers full Z-Wave serial frame; _extract_node_and_bytes() now strips SOF+header to expose command payload; 96 tests |
 | 3.2 | 22-Mar-2026 | Simplified to single-path UI — always select native Indigo device from dropdown; manual node ID entry removed |
 | 3.1 | 22-Mar-2026 | `indigo.zwave.subscribeToIncoming()` at startup so all Z-Wave bytes received regardless of node ownership; NOTIFICATION byte order auto-detection; native device picker added |
