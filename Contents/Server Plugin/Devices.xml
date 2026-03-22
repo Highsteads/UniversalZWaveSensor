@@ -3,9 +3,18 @@
     <Device type="custom" id="zwaveSensor">
         <Name>Universal Z-Wave Sensor</Name>
         <ConfigUI>
-            <Field id="nodeId" type="textfield">
+            <Field id="useNativeDevice" type="checkbox" defaultValue="false">
+                <Label>Parallel mode — native Indigo device exists on this node</Label>
+                <Description>Check this if Indigo already has a device for this sensor. The plugin will receive all Z-Wave bytes alongside the native device, letting you add temperature, humidity, or other states that Indigo does not provide.</Description>
+            </Field>
+            <Field id="nodeId" type="textfield" visibleBindingId="useNativeDevice" visibleBindingValue="false">
                 <Label>Z-Wave Node ID</Label>
                 <Description>Node ID shown in Indigo Z-Wave device list (e.g. 223)</Description>
+            </Field>
+            <Field id="sourceDeviceId" type="menu" defaultValue="none" visibleBindingId="useNativeDevice" visibleBindingValue="true">
+                <Label>Native Indigo Z-Wave Device</Label>
+                <Description>Select the existing Indigo device — node ID is read from it automatically</Description>
+                <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
             </Field>
             <Field id="sensorType" type="menu" defaultValue="motion">
                 <Label>Sensor Type</Label>

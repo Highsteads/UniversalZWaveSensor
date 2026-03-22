@@ -2,11 +2,13 @@
 # -*- coding: utf-8 -*-
 # Filename:    plugin.py
 # Description: Universal Z-Wave Sensor - creates proper Indigo plugin devices
-#              for Z-Wave sensors that Indigo does not natively recognise.
-#              Parses raw Z-Wave command bytes via zwaveCommandReceived().
+#              for any Z-Wave sensor, including those Indigo partially or fully
+#              recognises. Uses subscribeToIncoming() to receive ALL Z-Wave bytes
+#              regardless of native device ownership. Supports parallel mode:
+#              plugin devices alongside existing native Indigo devices.
 # Author:      CliveS & Claude Sonnet 4.6
 # Date:        21-03-2026
-# Version:     3.0
+# Version:     3.1
 
 import indigo
 import struct
@@ -134,7 +136,8 @@ class Plugin(indigo.PluginBase):
     # ==========================================================================
 
     def startup(self):
-        self.logger.info("Universal Z-Wave Sensor plugin starting v3.0")
+        self.logger.info("Universal Z-Wave Sensor plugin starting v3.1")
+        indigo.zwave.subscribeToIncoming()   # receive ALL Z-Wave bytes, including nodes with native Indigo devices
         self._rebuild_node_map()
         nodes = sorted(self.node_to_device.keys())
         self.logger.info(f"  Monitoring {len(nodes)} node(s): {nodes}")
@@ -196,33 +199,55 @@ class Plugin(indigo.PluginBase):
             self.logger.info(f"Stopped listening on Node {node_id}")
 
     def validateDeviceConfigUi(self, values_dict, type_id, device_id):
-        errors   = indigo.Dict()
-        node_str = values_dict.get("nodeId", "").strip()
-        if not node_str.isdigit() or not (1 <= int(node_str) <= 232):
-            errors["nodeId"] = "Node ID must be a whole number between 1 and 232"
-        else:
-            values_dict["address"] = node_str   # Indigo uses this as display address
+        errors      = indigo.Dict()
+        use_native  = values_dict.get("useNativeDevice", False)
 
-            # Warn if Indigo already has a native device on this node.
-            # zwaveCommandReceived() only fires for nodes this plugin owns —
-            # if Indigo already owns the node, raw bytes will never arrive here.
-            node_id = int(node_str)
-            known_names = [
-                dev.name for dev in indigo.devices
-                if dev.pluginId != self.pluginId
-                and dev.id != device_id
-                and str(getattr(dev, "address", "")) == node_str
-            ]
-            if known_names:
-                names_str = ", ".join(f"'{n}'" for n in known_names[:3])
-                if len(known_names) > 3:
-                    names_str += f" (+{len(known_names) - 3} more)"
-                errors["nodeId"] = (
-                    f"Node {node_id} already has Indigo-managed device(s): {names_str}. "
-                    f"Indigo owns this node — zwaveCommandReceived() will not fire for it "
-                    f"and this plugin device will never receive updates. "
-                    f"Use the existing Indigo device(s) directly instead."
-                )
+        if use_native:
+            # Parallel mode: read node ID from the selected native Indigo Z-Wave device
+            native_id_str = values_dict.get("sourceDeviceId", "").strip()
+            if not native_id_str or native_id_str == "none":
+                errors["sourceDeviceId"] = "Select the native Indigo Z-Wave device to pair with"
+            else:
+                try:
+                    native_dev = indigo.devices[int(native_id_str)]
+                    node_str   = str(native_dev.ownerProps.get("address", "")).strip()
+                    if not node_str.isdigit() or not (1 <= int(node_str) <= 232):
+                        errors["sourceDeviceId"] = (
+                            f"Could not read a valid Z-Wave node ID from '{native_dev.name}' "
+                            f"(address='{node_str}')"
+                        )
+                    else:
+                        values_dict["nodeId"]  = node_str
+                        values_dict["address"] = node_str
+                        self.logger.info(
+                            f"Parallel mode: node {node_str} from native device '{native_dev.name}'"
+                        )
+                except (KeyError, ValueError) as e:
+                    errors["sourceDeviceId"] = f"Could not read node ID from selected device: {e}"
+        else:
+            # Manual mode: user enters node ID directly
+            node_str = values_dict.get("nodeId", "").strip()
+            if not node_str.isdigit() or not (1 <= int(node_str) <= 232):
+                errors["nodeId"] = "Node ID must be a whole number between 1 and 232"
+            else:
+                values_dict["address"] = node_str
+                # Inform (not block) if Indigo already has a native device on this node.
+                # subscribeToIncoming() means we receive bytes for ALL nodes — parallel mode works fine.
+                node_id     = int(node_str)
+                known_names = [
+                    dev.name for dev in indigo.devices
+                    if dev.pluginId != self.pluginId
+                    and dev.id != device_id
+                    and str(getattr(dev, "address", "")) == node_str
+                ]
+                if known_names:
+                    names_str = ", ".join(f"'{n}'" for n in known_names[:3])
+                    if len(known_names) > 3:
+                        names_str += f" (+{len(known_names) - 3} more)"
+                    self.logger.info(
+                        f"Node {node_id} also has native Indigo device(s): {names_str}. "
+                        f"Parallel mode active — plugin receives all Z-Wave bytes via subscribeToIncoming()."
+                    )
 
         # Validate optional endpoint ID
         ep_str = values_dict.get("endpointId", "").strip()
@@ -231,10 +256,25 @@ class Plugin(indigo.PluginBase):
 
         return (len(errors) == 0), values_dict, errors
 
+    def get_native_zwave_devices(self, filter="", values_dict=None, type_id="", target_id=0):
+        """
+        ConfigUI callback — returns all non-plugin Indigo Z-Wave devices for the parallel mode picker.
+        Only includes devices with a numeric address (Z-Wave node ID).
+        """
+        result = []
+        for dev in indigo.devices:
+            if dev.pluginId == self.pluginId:
+                continue   # skip our own plugin devices
+            node_str = str(getattr(dev, "address", "")).strip()
+            if node_str.isdigit() and 1 <= int(node_str) <= 232:
+                result.append((str(dev.id), f"{dev.name}  (Node {node_str})"))
+        result.sort(key=lambda x: x[1])
+        return result if result else [("none", "-- No native Z-Wave devices found --")]
+
     # ==========================================================================
-    # Z-Wave report handler — plugin-owned unknown devices
-    # NOTE: Only fires for devices whose Z-Wave node is owned by this plugin.
-    #       Does NOT fire for nodes managed by Indigo's built-in Z-Wave handler.
+    # Z-Wave report handler — receives ALL Z-Wave commands via subscribeToIncoming()
+    # NOTE: Fires for ALL nodes, including those with native Indigo devices.
+    #       Filtered below to only route to our registered plugin devices.
     # ==========================================================================
 
     def zwaveCommandReceived(self, cmd):
@@ -472,17 +512,23 @@ class Plugin(indigo.PluginBase):
     def _handle_notification(self, device, raw) -> bool:
         """
         NOTIFICATION_REPORT v4+ (CC=0x71, cmd=0x05)
-        Byte layout:
-          [0x71, 0x05, 0x00, 0x00, 0x00, notif_type, notif_status, notif_event,
+        Z-Wave spec byte layout:
+          [0x71, 0x05, v1_type, v1_level, reserved,
+           notif_status (0xFF/0x00), notif_type, notif_event,
            event_params_len, event_params...]
-          notif_status: 0xFF=active  0x00=idle
-          notif_event:  0x00=idle/generic-cleared  >0=specific event
+        Some older devices reverse notif_status and notif_type.
+        Auto-detected: notif_status is always 0x00 or 0xFF; notif_type is 0x01..0x1F.
         """
         if len(raw) < 8:
             return False
 
-        notif_type   = raw[5]
-        notif_status = raw[6]
+        # Auto-detect byte order: Status byte is only ever 0x00 or 0xFF
+        if raw[5] in (0x00, 0xFF):
+            notif_status = raw[5]   # spec order (standard hardware)
+            notif_type   = raw[6]
+        else:
+            notif_type   = raw[5]   # reversed order (some older devices)
+            notif_status = raw[6]
         notif_event  = raw[7]
 
         if notif_type == NOTIF_HOME_SECURITY:
@@ -808,8 +854,10 @@ class Plugin(indigo.PluginBase):
 
         Example byte sequences:
           Temperature 21.5 degC:   31 05 01 22 00 D7
-          Motion detected (NOTIF): 71 05 00 00 00 07 FF 07 00
-          Motion cleared  (NOTIF): 71 05 00 00 00 07 00 08 00
+          Motion detected (NOTIF): 71 05 00 00 00 FF 07 07 00
+          Motion cleared  (NOTIF): 71 05 00 00 00 FF 07 08 00
+          Door open       (NOTIF): 71 05 00 00 00 FF 06 16 00
+          Door closed     (NOTIF): 71 05 00 00 00 FF 06 17 00
           Battery 85%:             80 03 55
           Wake-up interval 5min:   84 06 00 01 2C 6F
           Wake-up notification:    84 07

@@ -1,13 +1,14 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
 # Filename:    test_plugin.py
-# Description: Mock test suite for Universal Z-Wave Sensor plugin v3.0
+# Description: Mock test suite for Universal Z-Wave Sensor plugin v3.1
 #              Covers all raw Z-Wave parsers, validateDeviceConfigUi,
-#              multi-channel routing, stale detection, temperature units,
-#              and wake-up interval handling.
+#              parallel mode (native device picker), subscribeToIncoming(),
+#              NOTIFICATION byte order auto-detection, multi-channel routing,
+#              stale detection, temperature units, and wake-up interval handling.
 # Author:      CliveS & Claude Sonnet 4.6
-# Date:        21-03-2026
-# Version:     3.0
+# Date:        22-03-2026
+# Version:     3.1
 #
 # Run from the Server Plugin directory:
 #   python3 test_plugin.py -v
@@ -134,8 +135,9 @@ class TestValidateDeviceConfigUi(unittest.TestCase):
         _indigo.devices = self.dev_dict
         _indigo.Dict    = dict
 
-    def _validate(self, node_str, device_id=0, endpoint_str=""):
-        values_dict = {"nodeId": node_str, "endpointId": endpoint_str}
+    def _validate(self, node_str, device_id=0, endpoint_str="", use_native=False):
+        values_dict = {"nodeId": node_str, "endpointId": endpoint_str,
+                       "useNativeDevice": use_native}
         return self.p.validateDeviceConfigUi(values_dict, "zwaveSensor", device_id)
 
     def test_valid_unknown_node_passes(self):
@@ -144,15 +146,15 @@ class TestValidateDeviceConfigUi(unittest.TestCase):
         self.assertEqual(values["address"], "50")
         self.assertNotIn("nodeId", errors)
 
-    def test_known_node_blocked(self):
+    def test_known_node_now_allowed(self):
+        """v3.1: node with native Indigo device is ALLOWED — parallel mode via subscribeToIncoming()."""
         native = MockDevice(5, "Front Door Motion", address="223",
                             plugin_id="com.perceptiveautomation.indigoplugin.zwave")
         self.dev_dict[5] = native
         ok, values, errors = self._validate("223")
-        self.assertFalse(ok)
-        self.assertIn("nodeId", errors)
-        self.assertIn("223", errors["nodeId"])
-        self.assertIn("zwaveCommandReceived", errors["nodeId"])
+        self.assertTrue(ok)                        # no longer blocked
+        self.assertNotIn("nodeId", errors)
+        self.p.logger.info.assert_called()         # info log written
 
     def test_own_plugin_device_not_flagged(self):
         own = MockDevice(10, "My Sensor", address="223",
@@ -857,6 +859,228 @@ class TestHandleBasic(unittest.TestCase):
 
     def test_too_short_returns_false(self):
         self.assertFalse(self.p._handle_basic(self._dev(), [0x20, 0x03]))
+
+
+# ==============================================================================
+# Tests: startup() — subscribeToIncoming() called
+# ==============================================================================
+
+class TestStartup(unittest.TestCase):
+    """Verify startup() calls indigo.zwave.subscribeToIncoming()."""
+
+    def setUp(self):
+        self.p = make_plugin()
+        self.dev_dict = MockDevicesDict()
+        _indigo.devices = self.dev_dict
+        _indigo.zwave   = MagicMock()
+
+    def test_subscribe_to_incoming_called(self):
+        """startup() must call subscribeToIncoming() to receive all Z-Wave bytes."""
+        self.p.startup()
+        _indigo.zwave.subscribeToIncoming.assert_called_once()
+
+    def test_node_map_built_on_startup(self):
+        """startup() rebuilds the node->device map from existing plugin devices."""
+        dev = MockDevice(1, "Sensor", address="42",
+                         plugin_id="com.clives.universal-zwave-sensor",
+                         plugin_props={"nodeId": "42"})
+        self.dev_dict[1] = dev
+        self.p.startup()
+        self.assertIn(42, self.p.node_to_device)
+
+
+# ==============================================================================
+# Tests: parallel mode — native device picker in validateDeviceConfigUi
+# ==============================================================================
+
+class TestParallelMode(unittest.TestCase):
+    """validateDeviceConfigUi with useNativeDevice=True reads node ID from native device."""
+
+    def setUp(self):
+        self.p        = make_plugin()
+        self.dev_dict = MockDevicesDict()
+        _indigo.devices = self.dev_dict
+        _indigo.Dict    = dict
+
+    def _native(self, dev_id, name, node_str):
+        dev = MockDevice(dev_id, name, address=node_str,
+                         plugin_id="com.perceptiveautomation.indigoplugin.zwave")
+        dev.ownerProps = {"address": node_str}
+        self.dev_dict[dev_id] = dev
+        return dev
+
+    def _validate_parallel(self, source_dev_id, endpoint_str=""):
+        values_dict = {
+            "useNativeDevice": True,
+            "sourceDeviceId":  str(source_dev_id),
+            "nodeId":          "",
+            "endpointId":      endpoint_str,
+        }
+        return self.p.validateDeviceConfigUi(values_dict, "zwaveSensor", 0)
+
+    def test_parallel_mode_reads_node_from_native_device(self):
+        """Selecting a native device auto-populates nodeId and address."""
+        self._native(5, "Front Door Sensor", "156")
+        ok, values, errors = self._validate_parallel(5)
+        self.assertTrue(ok)
+        self.assertEqual(values["nodeId"],   "156")
+        self.assertEqual(values["address"],  "156")
+        self.assertNotIn("sourceDeviceId", errors)
+
+    def test_parallel_mode_no_device_selected_fails(self):
+        """Parallel mode with no device selected (value='none') is an error."""
+        values_dict = {"useNativeDevice": True, "sourceDeviceId": "none",
+                       "nodeId": "", "endpointId": ""}
+        ok, _, errors = self.p.validateDeviceConfigUi(values_dict, "zwaveSensor", 0)
+        self.assertFalse(ok)
+        self.assertIn("sourceDeviceId", errors)
+
+    def test_parallel_mode_blank_source_fails(self):
+        """Parallel mode with blank sourceDeviceId is an error."""
+        values_dict = {"useNativeDevice": True, "sourceDeviceId": "",
+                       "nodeId": "", "endpointId": ""}
+        ok, _, errors = self.p.validateDeviceConfigUi(values_dict, "zwaveSensor", 0)
+        self.assertFalse(ok)
+        self.assertIn("sourceDeviceId", errors)
+
+    def test_parallel_mode_device_with_non_numeric_address_fails(self):
+        """Native device with non-numeric address produces a clear error."""
+        dev = MockDevice(9, "Bad Device", address="not-a-node",
+                         plugin_id="com.perceptiveautomation.indigoplugin.zwave")
+        dev.ownerProps = {"address": "not-a-node"}
+        self.dev_dict[9] = dev
+        ok, _, errors = self._validate_parallel(9)
+        self.assertFalse(ok)
+        self.assertIn("sourceDeviceId", errors)
+
+    def test_parallel_mode_logs_info(self):
+        """Parallel mode logs the resolved node ID at info level."""
+        self._native(5, "Door Sensor", "156")
+        self._validate_parallel(5)
+        self.p.logger.info.assert_called()
+
+
+# ==============================================================================
+# Tests: get_native_zwave_devices() callback
+# ==============================================================================
+
+class TestGetNativeZwaveDevices(unittest.TestCase):
+
+    def setUp(self):
+        self.p        = make_plugin()
+        self.dev_dict = MockDevicesDict()
+        _indigo.devices = self.dev_dict
+
+    def _add(self, dev_id, name, address, plugin_id="com.perceptiveautomation.indigoplugin.zwave"):
+        dev = MockDevice(dev_id, name, address=address, plugin_id=plugin_id)
+        self.dev_dict[dev_id] = dev
+        return dev
+
+    def test_returns_native_zwave_devices(self):
+        """Native Z-Wave devices with numeric addresses are returned."""
+        self._add(1, "Front Door", "42")
+        self._add(2, "Back Door",  "55")
+        result = self.p.get_native_zwave_devices()
+        ids = [r[0] for r in result]
+        self.assertIn("1", ids)
+        self.assertIn("2", ids)
+
+    def test_excludes_own_plugin_devices(self):
+        """Our own plugin devices are excluded from the list."""
+        self._add(10, "Plugin Sensor", "42",
+                  plugin_id="com.clives.universal-zwave-sensor")
+        result = self.p.get_native_zwave_devices()
+        ids = [r[0] for r in result]
+        self.assertNotIn("10", ids)
+
+    def test_excludes_non_numeric_addresses(self):
+        """Devices with non-numeric addresses (not Z-Wave) are excluded."""
+        self._add(20, "HA Device", "binary_sensor.hall",
+                  plugin_id="no.homeassistant.plugin")
+        result = self.p.get_native_zwave_devices()
+        ids = [r[0] for r in result]
+        self.assertNotIn("20", ids)
+
+    def test_empty_returns_placeholder(self):
+        """When no native Z-Wave devices exist, returns the 'none' placeholder."""
+        result = self.p.get_native_zwave_devices()
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0][0], "none")
+
+    def test_label_includes_name_and_node(self):
+        """Each entry label includes the device name and node ID."""
+        self._add(5, "Hall Motion", "77")
+        result = self.p.get_native_zwave_devices()
+        labels = [r[1] for r in result]
+        self.assertTrue(any("Hall Motion" in l and "77" in l for l in labels))
+
+
+# ==============================================================================
+# Tests: NOTIFICATION byte order auto-detection
+# ==============================================================================
+
+class TestNotificationByteOrderDetection(unittest.TestCase):
+    """
+    The plugin auto-detects whether hardware uses:
+      Spec order:     [status(0xFF/0x00), type, event]  at raw[5..7]  — standard hardware
+      Reversed order: [type, status(0xFF/0x00), event]  at raw[5..7]  — some older devices
+    Detection: if raw[5] in (0x00, 0xFF) -> spec order; else -> reversed order.
+    """
+
+    def setUp(self):
+        self.p = make_plugin(debug=True)
+
+    def _dev(self):
+        return MockDevice(1, "Door Sensor", address="156",
+                          plugin_props={"sensorType": "contact"})
+
+    def test_spec_order_door_open(self):
+        """Spec order (0xFF at raw[5]): ACCESS_CONTROL door open — macpro's sensor format."""
+        # 71 05 00 00 00 FF 06 16 00  (status=0xFF, type=0x06, event=0x16)
+        raw = [0x71, 0x05, 0x00, 0x00, 0x00, 0xFF, 0x06, 0x16, 0x00]
+        dev = self._dev()
+        self.assertTrue(self.p._handle_notification(dev, raw))
+        self.assertTrue(dev.state_writes["contact"]["value"])
+        self.assertEqual(dev.state_writes["displayStatus"]["value"], "open")
+
+    def test_spec_order_door_closed(self):
+        """Spec order: ACCESS_CONTROL door closed."""
+        raw = [0x71, 0x05, 0x00, 0x00, 0x00, 0xFF, 0x06, 0x17, 0x00]
+        dev = self._dev()
+        self.assertTrue(self.p._handle_notification(dev, raw))
+        self.assertFalse(dev.state_writes["contact"]["value"])
+
+    def test_spec_order_motion_detected(self):
+        """Spec order: HOME_SECURITY motion detected."""
+        raw = [0x71, 0x05, 0x00, 0x00, 0x00, 0xFF, 0x07, 0x07, 0x00]
+        dev = MockDevice(1, "Motion", address="156",
+                         plugin_props={"sensorType": "motion"})
+        self.assertTrue(self.p._handle_notification(dev, raw))
+        self.assertTrue(dev.state_writes["motion"]["value"])
+
+    def test_spec_order_status_0x00_idle(self):
+        """Spec order with status=0x00 (inactive): HOME_SECURITY idle."""
+        raw = [0x71, 0x05, 0x00, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00]
+        dev = MockDevice(1, "Motion", address="156",
+                         plugin_props={"sensorType": "motion"})
+        self.assertTrue(self.p._handle_notification(dev, raw))
+        self.assertFalse(dev.state_writes["motion"]["value"])
+
+    def test_reversed_order_motion_detected(self):
+        """Reversed order (type at raw[5]): HOME_SECURITY motion detected — older devices."""
+        # 71 05 00 00 00 07 FF 07 00  (type=0x07, status=0xFF, event=0x07)
+        raw = [0x71, 0x05, 0x00, 0x00, 0x00, 0x07, 0xFF, 0x07, 0x00]
+        dev = MockDevice(1, "Motion", address="10",
+                         plugin_props={"sensorType": "motion"})
+        self.assertTrue(self.p._handle_notification(dev, raw))
+        self.assertTrue(dev.state_writes["motion"]["value"])
+
+    def test_reversed_order_door_open(self):
+        """Reversed order: ACCESS_CONTROL door open."""
+        raw = [0x71, 0x05, 0x00, 0x00, 0x00, 0x06, 0xFF, 0x16, 0x00]
+        dev = self._dev()
+        self.assertTrue(self.p._handle_notification(dev, raw))
+        self.assertTrue(dev.state_writes["contact"]["value"])
 
 
 # ==============================================================================
