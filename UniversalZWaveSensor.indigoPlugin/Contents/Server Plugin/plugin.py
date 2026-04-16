@@ -10,10 +10,17 @@
 # Version:     3.9
 
 import indigo
+import os as _os
 import struct
 import sys
 import platform
 from datetime import datetime, timedelta
+
+sys.path.insert(0, _os.getcwd())
+try:
+    from plugin_utils import log_startup_banner
+except ImportError:
+    log_startup_banner = None
 
 
 # ==============================================================================
@@ -1064,3 +1071,13 @@ class Plugin(indigo.PluginBase):
             self.stale_device_ids.discard(device.id)
             device.updateStateOnServer("deviceOnline", value=True, uiValue="online")
             self.logger.info(f"{device.name}: Back online (report received)")
+
+    # -------------------------------------------------------------------------
+    # Menu handlers
+    # -------------------------------------------------------------------------
+
+    def showPluginInfo(self, valuesDict=None, typeId=None):
+        if log_startup_banner:
+            log_startup_banner(self.pluginId, self.pluginDisplayName, self.pluginVersion)
+        else:
+            indigo.server.log(f"{self.pluginDisplayName} v{self.pluginVersion}")
