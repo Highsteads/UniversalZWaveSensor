@@ -1,14 +1,14 @@
 # Universal Z-Wave Sensor — Indigo Plugin
 
-**Version 4.0** | Indigo 2025.1 | Python 3.11
+**Version 5.0** | Indigo 2025.1+ | Python 3.11+
 
-Creates companion plugin devices alongside your existing Indigo Z-Wave devices, exposing sensor values that Indigo does not capture natively — temperature, humidity, luminance, contact state, and more.
+Creates companion plugin devices alongside your existing Indigo Z-Wave devices, exposing sensor values that Indigo does not capture natively — temperature, humidity, luminance, contact state, lock state, scene controller events, and more.
 
 ---
 
 ## Why this exists
 
-When you include a Z-Wave sensor in Indigo, Indigo creates a native device for it based on what it recognises. That works well for the values Indigo knows about. But many sensors send additional data that Indigo ignores — a door/window sensor that also reports temperature, a multi-sensor where Indigo captures motion but not humidity or luminance, a sensor model that Indigo lists but only partially supports.
+When you include a Z-Wave sensor in Indigo, Indigo creates a native device for it based on what it recognises. That works well for the values Indigo knows about. But many sensors send additional data that Indigo ignores — a door/window sensor that also reports temperature, a multi-sensor where Indigo captures motion but not humidity or luminance, a lock that sends detailed bolt/latch state, a scene controller Indigo doesn't support at all.
 
 This plugin fills that gap. You select the existing native Indigo device, choose the sensor type you want to capture, and the plugin creates a properly-typed Indigo device that works in triggers, control pages, and action groups exactly like any native device.
 
@@ -21,15 +21,18 @@ The plugin also provides a **Simulate Z-Wave Report** tool — useful for sendin
 - **Select from your existing Indigo devices** — dropdown lists all native Z-Wave devices; node ID is read automatically
 - **Multiple plugin devices per node** — one physical multi-sensor creates separate plugin devices per reading type (motion, temperature, luminance), each assigned the appropriate sensor type
 - **Multi-channel / endpoint support** — optional endpoint ID per device for multi-channel sensors (e.g. Aeotec 6-in-1)
-- **Seven sensor types** — motion, contact, temperature, humidity, luminance, energy monitor, generic
-- **Correct icons** — thermometer, light sensor, motion, power, and generic sensor icons set automatically
-- **displayStatus** — device list shows meaningful values: `detected / clear`, `open / closed`, `21.5 degC`, `450 lux`, etc.
+- **Ten sensor types** — motion, contact, temperature, humidity, luminance, energy monitor, battery, lock, scene controller, generic
+- **Correct icons** — thermometer, light sensor, motion, power, lock, and generic sensor icons set automatically
+- **displayStatus** — device list shows meaningful values: `detected / clear`, `open / closed`, `21.5 degC`, `450 lux`, `locked / unlocked`, `S1 pressed`, etc.
 - **Temperature unit preference** — store and display all temperatures in degC or degF regardless of what the sensor reports; conversion applied automatically
+- **Battery sensor type** — dedicated battery device with `batteryLow` flag; all device types also carry `batteryLevel` and `batteryLow` states
+- **Lock support** — DOOR_LOCK_OPERATION_REPORT decodes lock mode, bolt state, latch state, and last user ID; NOTIFICATION ACCESS_CONTROL events for keypad/RF/manual lock and unlock
+- **Scene controller** — CENTRAL_SCENE_NOTIFICATION decodes scene number, key action (pressed/released/held/repeated), and timestamp
 - **Stale device detection** — configurable threshold (4–72 h); logs a warning and sets `deviceOnline=False` when a device goes silent; clears automatically when any report arrives
 - **Wake-up interval tracking** — WAKE_UP_INTERVAL_REPORT stores the interval in the `wakeUpInterval` state; wake-up notifications mark the device as alive
 - **Simulate Z-Wave Report** — menu item lets you feed raw hex bytes to any plugin device for end-to-end testing; dialog stays open for iterative testing
 - **Debug logging** — toggleable; logs raw Z-Wave bytes and all state updates
-- **96-test mock suite** — full test coverage without needing an Indigo server
+- **Mock test suite** — full test coverage without needing an Indigo server
 
 ---
 
@@ -42,10 +45,13 @@ The plugin also provides a **Simulate Z-Wave Report** tool — useful for sendin
 | Temperature | `temperature` (float, degC or degF) | `displayStatus` |
 | Humidity | `humidity` (float, %) | `displayStatus` |
 | Luminance | `luminance` (float, lux) | `displayStatus` |
-| Energy | `watts` (float, W) | `kwh`, `displayStatus` |
+| Energy | `watts` (float, W) | `kwh`, `voltage`, `current`, `displayStatus` |
+| Battery | `batteryLevel` (int, %) | `batteryLow`, `onOffState`, `displayStatus` |
+| Lock | `lockState` (bool) | `lockMode`, `boltState`, `latchState`, `lastUser`, `onOffState`, `displayStatus` |
+| Scene Controller | `lastScene` (int) | `lastSceneAction`, `sceneTimestamp`, `onOffState`, `displayStatus` |
 | Generic | `onOffState` (bool) | `switchState`, `dimLevel`, `displayStatus` |
 
-All device types also carry: `batteryLevel`, `waterLeak`, `smoke`, `coAlarm`, `co2Level`, `uvIndex`, `pressure`, `noise`, `lastUpdate`, `deviceOnline`, `wakeUpInterval`, `rawLastReport`
+All device types also carry: `batteryLevel`, `batteryLow`, `waterLeak`, `smoke`, `coAlarm`, `co2Level`, `uvIndex`, `pressure`, `noise`, `velocity`, `airFlow`, `voc`, `soilMoisture`, `gasCubicMeters`, `waterCubicMeters`, `lastUpdate`, `deviceOnline`, `wakeUpInterval`, `rawLastReport`
 
 ---
 
@@ -53,12 +59,14 @@ All device types also carry: `batteryLevel`, `waterLeak`, `smoke`, `coAlarm`, `c
 
 | Hex | Class | What it decodes |
 |---|---|---|
-| `0x31` | SENSOR_MULTILEVEL | Temperature, humidity, luminance, CO2, UV, pressure, noise |
+| `0x31` | SENSOR_MULTILEVEL | Temperature, humidity, luminance, CO2, UV, pressure, noise, velocity, power (W), voltage (V), current (A), air flow, VOC, soil moisture |
 | `0x30` | SENSOR_BINARY | Motion, water, smoke, CO, tamper, door/window |
-| `0x71` | NOTIFICATION v4+ | Motion, tamper, door/window, water, smoke, CO |
+| `0x71` | NOTIFICATION v4+ | Motion, tamper, intrusion, glass break, door/window, water, smoke, CO, lock/unlock ops (manual/RF/keypad/auto) |
+| `0x62` | DOOR_LOCK | Lock mode, bolt state, latch state (v2+), last user |
+| `0x5B` | CENTRAL_SCENE | Scene number, key action (pressed/released/held/repeated), sequence number |
 | `0x25` | SWITCH_BINARY | On/off relay |
 | `0x26` | SWITCH_MULTILEVEL | Dimmers (0–99%) |
-| `0x32` | METER | Power (W), energy (kWh) |
+| `0x32` | METER | Power (W), energy (kWh/kVAh), voltage (V, Scale2), current (A, Scale2), gas (m3/ft3/ccf), water (m3/ft3/gallons) |
 | `0x80` | BATTERY | Battery level %; 0xFF low warning |
 | `0x20` | BASIC | Legacy on/off |
 | `0x60` | MULTI_CHANNEL | Endpoint encapsulation — unwrapped transparently |
@@ -68,9 +76,16 @@ All device types also carry: `batteryLevel`, `waterLeak`, `smoke`, `coAlarm`, `c
 
 ## Installation
 
-1. Download or clone this repository
-2. Double-click `UniversalZWaveSensor.indigoPlugin` to install
-3. Enable the plugin from the Indigo Plugins menu
+1. Go to the [Releases page](https://github.com/Highsteads/UniversalZWaveSensor/releases) and download `UniversalZWaveSensor.indigoPlugin.zip`
+2. Unzip the downloaded file — you will get `UniversalZWaveSensor.indigoPlugin`
+3. Double-click `UniversalZWaveSensor.indigoPlugin` — Indigo will install it automatically
+4. Enable the plugin from the Indigo Plugins menu
+
+---
+
+## Upgrading from a previous version
+
+Existing plugin devices upgrade automatically. When Indigo loads the new plugin, it calls `device.stateListOrDisplayStateIdChanged()` on each device, which adds any new states with default values. No manual steps are needed. Your existing triggers and action groups continue to work unchanged.
 
 ---
 
@@ -110,10 +125,19 @@ Select a plugin device, enter space-separated hex bytes, and click **Send**. The
 | Byte sequence | What it simulates |
 |---|---|
 | `31 05 01 22 00 D7` | Temperature 21.5 degC |
+| `31 05 03 0A 01 C2` | Luminance 450 lux |
+| `31 05 05 01 41` | Humidity 65% |
 | `71 05 00 00 00 FF 07 07 00` | Motion detected (NOTIFICATION) |
 | `71 05 00 00 00 FF 07 08 00` | Motion cleared |
 | `71 05 00 00 00 FF 06 16 00` | Door opened |
 | `71 05 00 00 00 FF 06 17 00` | Door closed |
+| `71 05 00 00 00 FF 06 01 01 00` | Manual lock (user 0) |
+| `71 05 00 00 00 FF 06 06 02 05` | Keypad lock (user 5) |
+| `62 03 FF 00 00 FE` | Door lock — locked (v2, bolt locked, latch closed) |
+| `62 03 00 00 00 FD` | Door lock — unlocked (v2, bolt unlocked, latch open) |
+| `5B 03 01 00 01` | Scene 1, key pressed |
+| `5B 03 02 01 01` | Scene 1, key released |
+| `5B 03 03 02 02` | Scene 2, key held |
 | `80 03 55` | Battery 85% |
 | `80 03 FF` | Battery LOW warning |
 | `84 07` | Wake-up notification |
@@ -170,7 +194,7 @@ cd "UniversalZWaveSensor.indigoPlugin/Contents/Server Plugin"
 python3 test_plugin.py -v
 ```
 
-No Indigo installation required — `indigo` is fully mocked. All 110 tests should pass.
+No Indigo installation required — `indigo` is fully mocked. All tests should pass.
 
 ---
 
@@ -178,14 +202,15 @@ No Indigo installation required — `indigo` is fully mocked. All 110 tests shou
 
 | Version | Date | Changes |
 |---|---|---|
-| 4.0 | 22-Mar-2026 | METER_REPORT v3 voltage (V) and current (A) — Scale2 bit (byte 2 bit 7) now extracted and combined with 2-bit scale to form full 3-bit scale value; 112 tests |
+| 5.0 | 03-May-2026 | DOOR_LOCK (CC 0x62) — lock mode, bolt/latch state (v2 door condition bitmask), last user; CENTRAL_SCENE (CC 0x5B) — scene number, key action (pressed/released/held/repeated), timestamp; NOTIFICATION ACCESS_CONTROL extended — manual/RF/keypad/auto lock and unlock ops with user ID extraction; NOTIFICATION HOME_SECURITY extended — intrusion (0x01/0x02) and glass break (0x05/0x06); METER gas (m3/ft3/ccf) and water (m3/ft3/gallons) meter types; SENSOR_MULTILEVEL extended — velocity, watts, voltage, current, air flow, VOC, soil moisture; Battery sensor type — dedicated sensorType with displayStatus and batteryLow flag; batteryLow state on all device types (True if ≤20% or 0xFF sentinel); 10 sensor types; 41 device states |
+| 4.0 | 22-Mar-2026 | METER_REPORT v3 voltage (V) and current (A) — Scale2 bit (byte 2 bit 7) now extracted and combined with 2-bit scale to form full 3-bit scale value |
 | 3.9 | 22-Mar-2026 | Startup banner in `__init__()` using raw constructor params; Info.plist standardised (PluginVersion key added — fixes blank version, IwsApiVersion, CFBundleURLTypes, GithubInfo) |
 | 3.8 | 22-Mar-2026 | SENSOR_BINARY (CC 0x30) logging moved to DEBUG always — NOTIFICATION is the primary INFO source for motion events |
 | 3.7 | 22-Mar-2026 | Log verbosity reduced — INFO only for report types matching device sensorType; secondary fan-out and HS_IDLE moved to DEBUG |
-| 3.6 | 22-Mar-2026 | Startup displayStatus initialisation — _init_display_status() called in deviceStartComm(); corrects stale values (e.g. "detected" on Temperature device) immediately on plugin reload; 110 tests |
+| 3.6 | 22-Mar-2026 | Startup displayStatus initialisation — _init_display_status() called in deviceStartComm(); corrects stale values (e.g. "detected" on Temperature device) immediately on plugin reload |
 | 3.5 | 22-Mar-2026 | displayStatus guard per sensorType — motion/NOTIFICATION/SENSOR_BINARY reports no longer overwrite displayStatus on Temperature or Lux devices sharing the same node |
 | 3.4 | 22-Mar-2026 | NOTIFICATION event 0x08 = motion DETECTED (not cleared); SENSOR_BINARY type 0x0C added to lookup table |
-| 3.3 | 22-Mar-2026 | Fixed serial API frame unwrapping — subscribeToIncoming() delivers full Z-Wave serial frame; _extract_node_and_bytes() now strips SOF+header to expose command payload; 96 tests |
+| 3.3 | 22-Mar-2026 | Fixed serial API frame unwrapping — subscribeToIncoming() delivers full Z-Wave serial frame; _extract_node_and_bytes() now strips SOF+header to expose command payload |
 | 3.2 | 22-Mar-2026 | Simplified to single-path UI — always select native Indigo device from dropdown; manual node ID entry removed |
 | 3.1 | 22-Mar-2026 | `indigo.zwave.subscribeToIncoming()` at startup so all Z-Wave bytes received regardless of node ownership; NOTIFICATION byte order auto-detection; native device picker added |
 | 3.0 | 21-Mar-2026 | Multi-channel endpoint routing; stale device detection; temperature unit preference (degC/degF); wake-up interval tracking; simulate dialog stays open |

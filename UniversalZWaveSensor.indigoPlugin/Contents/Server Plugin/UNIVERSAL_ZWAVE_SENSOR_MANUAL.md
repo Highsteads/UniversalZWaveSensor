@@ -1,7 +1,7 @@
 # Universal Z-Wave Sensor Plugin — User Manual
 
-**Version 4.0** | Indigo 2025.1 | Author: CliveS & Claude Sonnet 4.6
-**Last updated:** 22-Mar-2026
+**Version 5.0** | Indigo 2025.1+ | Author: CliveS & Claude Sonnet 4.6
+**Last updated:** 03-May-2026
 
 ---
 
@@ -10,31 +10,34 @@
 1. [What this plugin does](#1-what-this-plugin-does)
 2. [How it works](#2-how-it-works)
 3. [Installation](#3-installation)
-4. [Creating a device](#4-creating-a-device)
-5. [Multi-sensor devices — one node, multiple plugin devices](#5-multi-sensor-devices--one-node-multiple-plugin-devices)
-6. [Multi-channel devices — endpoint routing](#6-multi-channel-devices--endpoint-routing)
-7. [Sensor types and device states](#7-sensor-types-and-device-states)
-8. [Plugin preferences](#8-plugin-preferences)
-9. [Simulate Z-Wave Report](#9-simulate-z-wave-report)
-10. [Stale device detection](#10-stale-device-detection)
-11. [Z-Wave command classes handled](#11-z-wave-command-classes-handled)
-12. [Triggers and automations](#12-triggers-and-automations)
-13. [Troubleshooting](#13-troubleshooting)
-14. [Known limitations](#14-known-limitations)
-15. [Changelog](#15-changelog)
+4. [Upgrading from a previous version](#4-upgrading-from-a-previous-version)
+5. [Creating a device](#5-creating-a-device)
+6. [Multi-sensor devices — one node, multiple plugin devices](#6-multi-sensor-devices--one-node-multiple-plugin-devices)
+7. [Multi-channel devices — endpoint routing](#7-multi-channel-devices--endpoint-routing)
+8. [Sensor types and device states](#8-sensor-types-and-device-states)
+9. [Plugin preferences](#9-plugin-preferences)
+10. [Simulate Z-Wave Report](#10-simulate-z-wave-report)
+11. [Stale device detection](#11-stale-device-detection)
+12. [Z-Wave command classes handled](#12-z-wave-command-classes-handled)
+13. [Triggers and automations](#13-triggers-and-automations)
+14. [Troubleshooting](#14-troubleshooting)
+15. [Known limitations](#15-known-limitations)
+16. [Changelog](#16-changelog)
 
 ---
 
 ## 1. What this plugin does
 
-When Indigo includes a Z-Wave sensor it creates a native device based on what it recognises. That works well for the values Indigo knows about. But many sensors send additional data that Indigo ignores — a door/window sensor that also reports temperature, a multi-sensor where Indigo captures motion but not humidity or luminance, a sensor model that Indigo lists but only partially supports.
+When Indigo includes a Z-Wave sensor it creates a native device based on what it recognises. That works well for the values Indigo knows about. But many sensors send additional data that Indigo ignores — a door/window sensor that also reports temperature, a multi-sensor where Indigo captures motion but not humidity or luminance, a lock that sends detailed bolt and latch state, a scene controller Indigo doesn't support at all.
 
-This plugin fills that gap. You select the existing native Indigo device, choose the sensor type you want to capture (temperature, humidity, contact, motion, etc.), and the plugin creates a properly-typed Indigo device with the right icon, meaningful states, and a human-readable value in the device list.
+This plugin fills that gap. You select the existing native Indigo device, choose the sensor type you want to capture (temperature, humidity, contact, lock, scene, etc.), and the plugin creates a properly-typed Indigo device with the right icon, meaningful states, and a human-readable value in the device list.
 
 **Typical use cases:**
 
 - A NEO Coolcam door/window sensor that Indigo handles as a contact device, but which also sends temperature and humidity
 - A motion sensor that also reports luminance and CO2 that Indigo does not expose
+- A Z-Wave lock where you want bolt state, latch state, and the last user ID in Indigo variables
+- A scene controller / remote that Indigo does not natively decode
 - Any multi-sensor where Indigo captures one value but you want the others
 
 **Reporting to Indigo developers:** The Simulate Z-Wave Report tool lets you feed raw byte sequences and see how the plugin parses them. If you want to help Matt and Jay (Indigo's authors) add native support for a sensor, enable debug logging, trigger the sensor, and send them the logged byte sequences.
@@ -53,18 +56,29 @@ The plugin decodes the standard Z-Wave command classes directly from the bytes, 
 
 ## 3. Installation
 
-1. Download `UniversalZWaveSensor.indigoPlugin` from GitHub:
-   https://github.com/Highsteads/UniversalZWaveSensor
+1. Go to the [Releases page](https://github.com/Highsteads/UniversalZWaveSensor/releases) and download `UniversalZWaveSensor.indigoPlugin.zip`
 
-2. Double-click the downloaded file — Indigo will prompt to install it
+2. Unzip the downloaded file — you will get `UniversalZWaveSensor.indigoPlugin`
 
-3. In Indigo, go to **Plugins menu → Universal Z-Wave Sensor → Enable**
+3. Double-click `UniversalZWaveSensor.indigoPlugin` — Indigo will install it automatically
 
-4. The plugin starts immediately; no server restart required
+4. In Indigo, go to **Plugins menu → Universal Z-Wave Sensor → Enable**
+
+5. The plugin starts immediately; no server restart required
 
 ---
 
-## 4. Creating a device
+## 4. Upgrading from a previous version
+
+Existing plugin devices upgrade automatically. When Indigo loads the new plugin version, it calls `device.stateListOrDisplayStateIdChanged()` on each device, which adds any new states with default values.
+
+No manual steps are needed. Your existing triggers, control pages, and action groups continue to work unchanged.
+
+If you previously had devices configured as Energy Monitor and want to also expose voltage and current, those states are now populated automatically by the existing parser — no reconfiguration needed.
+
+---
+
+## 5. Creating a device
 
 ### Step 1 — Include the sensor in Indigo
 
@@ -87,7 +101,7 @@ Include the sensor in your Z-Wave network through Indigo as normal. Indigo creat
 
 ### Step 4 — Name and save
 
-Name the device to reflect what it captures, e.g. `Bathroom Door (Temp)` or `Hall PIR (Humidity)`. Click **Save**.
+Name the device to reflect what it captures, e.g. `Bathroom Door (Temp)` or `Front Door Lock`. Click **Save**.
 
 Enable debug logging in Plugin Preferences and trigger the physical sensor — you will see the raw bytes in the Indigo log and the states updating in real time.
 
@@ -97,7 +111,7 @@ If Indigo adds full native support for the extra sensor values, delete the plugi
 
 ---
 
-## 5. Multi-sensor devices — one node, multiple plugin devices
+## 6. Multi-sensor devices — one node, multiple plugin devices
 
 Many Z-Wave sensors report motion, temperature, humidity, and more from the same node. Create one plugin device per sensor type, all selecting the same native device, each with the appropriate sensor type.
 
@@ -116,7 +130,7 @@ Both devices receive every report from the node. Each only writes states relevan
 
 ---
 
-## 6. Multi-channel devices — endpoint routing
+## 7. Multi-channel devices — endpoint routing
 
 Some Z-Wave multi-sensors (e.g. Aeotec MultiSensor 6) use multi-channel addressing: each sensor type is exposed as a separate endpoint on the same node, using CC 0x60 MULTI_CHANNEL encapsulation.
 
@@ -145,7 +159,7 @@ The `ep1` in the first line is the source endpoint number to use in the Endpoint
 
 ---
 
-## 7. Sensor types and device states
+## 8. Sensor types and device states
 
 ### Motion Sensor
 - **Icon:** Motion sensor (filled when detected)
@@ -175,7 +189,24 @@ The `ep1` in the first line is the source endpoint number to use in the Endpoint
 ### Energy Monitor
 - **Icon:** Power on/off
 - **displayStatus:** `125.5 W`
-- **Key states:** `watts` (float), `kwh` (float)
+- **Key states:** `watts` (float), `kwh` (float), `voltage` (float), `current` (float)
+
+### Battery Sensor
+- **Icon:** Generic sensor
+- **displayStatus:** `85%` or `LOW`
+- **Key states:** `batteryLevel` (int, 0-100), `batteryLow` (bool), `onOffState` (bool — True when low)
+- **Note:** All sensor types carry `batteryLevel` and `batteryLow` regardless of their type. The dedicated Battery Sensor type is for nodes that report nothing but battery state (e.g. a simple Z-Wave battery monitoring device).
+
+### Lock (door lock)
+- **Icon:** Lock
+- **displayStatus:** `locked` / `unlocked`
+- **Key states:** `lockState` (bool — True=locked), `lockMode` (int — raw mode byte), `boltState` (bool — True=bolt locked), `latchState` (bool — True=latch closed), `lastUser` (int — user ID from keypad/RF events), `onOffState` (bool)
+- **Sources:** DOOR_LOCK_OPERATION_REPORT (CC 0x62) and NOTIFICATION ACCESS_CONTROL events (CC 0x71)
+
+### Scene Controller (button/remote)
+- **Icon:** Generic sensor
+- **displayStatus:** `S1 pressed`, `S2 held`, etc.
+- **Key states:** `lastScene` (int — scene number), `lastSceneAction` (string — pressed/released/held/repeated_1/repeated_2), `sceneTimestamp` (string — `YYYY-MM-DD HH:MM:SS`), `onOffState` (bool — True while key held/pressed, False on release)
 
 ### Generic (on/off)
 - **Icon:** Sensor on/off
@@ -188,7 +219,8 @@ The `ep1` in the first line is the source endpoint number to use in the Endpoint
 |---|---|---|
 | `displayStatus` | String | Human-readable primary value shown in device list |
 | `onOffState` | Boolean | Generic on/off (set wherever applicable) |
-| `batteryLevel` | Number | Battery % (1-100); `1` with uiValue `LOW` = 0xFF sentinel |
+| `batteryLevel` | Number | Battery % (1-100); uiValue `LOW` when sentinel 0xFF received |
+| `batteryLow` | Boolean | True if battery ≤ 20% or 0xFF sentinel received |
 | `deviceOnline` | Boolean | True = recently reported; False = silent beyond stale threshold |
 | `wakeUpInterval` | Number | Wake-up interval in seconds (from WAKE_UP_INTERVAL_REPORT) |
 | `waterLeak` | Boolean | Water leak detected |
@@ -199,14 +231,20 @@ The `ep1` in the first line is the source endpoint number to use in the Endpoint
 | `uvIndex` | Number | UV index |
 | `pressure` | Number | Barometric pressure in kPa |
 | `noise` | Number | Noise level in dB |
-| `voltage` | Number | Voltage in V (state reserved; requires METER v3 parser) |
-| `current` | Number | Current in A (state reserved; requires METER v3 parser) |
+| `velocity` | Number | Velocity in m/s |
+| `airFlow` | Number | Air flow in m3/h |
+| `voc` | Number | VOC level in ppm |
+| `soilMoisture` | Number | Soil moisture % |
+| `gasCubicMeters` | Number | Gas consumption in m3 (or ft3/ccf depending on meter scale) |
+| `waterCubicMeters` | Number | Water consumption in m3 (or ft3/gallons depending on meter scale) |
+| `voltage` | Number | Voltage in V |
+| `current` | Number | Current in A |
 | `lastUpdate` | String | Timestamp of last state change `YYYY-MM-DD HH:MM:SS` |
 | `rawLastReport` | String | Hex bytes of last unrecognised report |
 
 ---
 
-## 8. Plugin preferences
+## 9. Plugin preferences
 
 Access via **Plugins → Universal Z-Wave Sensor → Configure...**
 
@@ -220,7 +258,7 @@ Access via **Plugins → Universal Z-Wave Sensor → Configure...**
 
 ---
 
-## 9. Simulate Z-Wave Report
+## 10. Simulate Z-Wave Report
 
 **Plugins → Universal Z-Wave Sensor → Simulate Z-Wave Report...**
 
@@ -236,9 +274,18 @@ This tool is also useful for capturing raw bytes from sensors and sharing them w
 | `31 05 03 0A 01 C2` | Luminance 450 lux |
 | `31 05 05 01 41` | Humidity 65% |
 | `71 05 00 00 00 FF 07 07 00` | Motion detected (NOTIFICATION, location provided) |
-| `71 05 00 00 00 FF 07 08 00` | Motion detected (NOTIFICATION, unknown location) |
-| `71 05 00 00 00 FF 06 16 00` | Door opened |
-| `71 05 00 00 00 FF 06 17 00` | Door closed |
+| `71 05 00 00 00 FF 07 00 00` | Motion cleared (HOME_SECURITY idle) |
+| `71 05 00 00 00 FF 06 16 00` | Door opened (ACCESS_CONTROL) |
+| `71 05 00 00 00 FF 06 17 00` | Door closed (ACCESS_CONTROL) |
+| `71 05 00 00 00 FF 06 01 01 00` | Manual lock (no user ID) |
+| `71 05 00 00 00 FF 06 05 01 00` | Keypad lock (no user ID) |
+| `71 05 00 00 00 FF 06 06 02 05` | Keypad unlock (user 5) |
+| `62 03 FF 00 00 FE` | Lock report — locked (v2, bolt locked, latch closed) |
+| `62 03 00 00 00 FD` | Lock report — unlocked (v2, bolt unlocked, latch open) |
+| `5B 03 01 00 01` | Central Scene — scene 1, key pressed |
+| `5B 03 02 01 01` | Central Scene — scene 1, key released |
+| `5B 03 03 02 02` | Central Scene — scene 2, key held |
+| `5B 03 04 03 03` | Central Scene — scene 3, key repeated (1st) |
 | `80 03 55` | Battery 85% |
 | `80 03 FF` | Battery LOW warning |
 | `84 07` | Wake-up notification (marks device alive) |
@@ -248,14 +295,21 @@ This tool is also useful for capturing raw bytes from sensors and sharing them w
 ### Byte format reference
 
 **SENSOR_MULTILEVEL (0x31) report:** `31 05 <type> <prec_scale_size> <value bytes...>`
-- Type `01` = temperature, `03` = luminance, `05` = humidity
+- Type `01` = temperature, `03` = luminance, `05` = humidity, `08` = pressure, `0B` = velocity, `0F` = CO2, `10` = watts, `11` = UV index, `12` = voltage, `13` = current, `15` = air flow, `19` = VOC, `1B` = noise, `1C` = soil moisture
 - `prec_scale_size` encodes precision (bits 7-5), scale (bits 4-3), size (bits 2-0)
 
-**NOTIFICATION (0x71) report:** `71 05 00 00 00 FF <notif_type> <event> 00`
+**NOTIFICATION (0x71) report:** `71 05 00 00 00 FF <notif_type> <event> <params_len> [params...]`
 - Notif status `FF` = event active, `00` = event cleared
-- Notif type `07` = HOME_SECURITY, `06` = ACCESS_CONTROL
-- Events for HOME_SECURITY: `07` = motion detected, `08` = motion cleared
-- Events for ACCESS_CONTROL: `16` = door open, `17` = door closed
+- Notif type `07` = HOME_SECURITY, `06` = ACCESS_CONTROL, `05` = WATER, `01` = SMOKE, `02` = CO
+- HOME_SECURITY events: `01/02` = intrusion, `03/09` = tamper, `05/06` = glass break, `07/08` = motion detected
+- ACCESS_CONTROL events: `01` = manual lock, `02` = manual unlock, `03` = RF lock, `04` = RF unlock, `05` = keypad lock, `06` = keypad unlock, `09` = auto lock, `0B` = lock jammed
+
+**DOOR_LOCK_OPERATION_REPORT (0x62 0x03):** `62 03 <mode> <handles_mode> <cond> <timeout>`
+- Mode: `0xFF` = locked, `0x00` = unlocked
+- Door condition byte (v2): bit0 = door open, bit1 = bolt not locked (inverted), bit2 = latch not closed (inverted)
+
+**CENTRAL_SCENE_NOTIFICATION (0x5B 0x03):** `5B 03 <seq_no> <key_attributes> <scene_number>`
+- Key attributes bits[2:0]: `0x00` = pressed, `0x01` = released, `0x02` = held, `0x03` = repeated_1, `0x04` = repeated_2, etc.
 
 **BATTERY (0x80) report:** `80 03 <level>`
 - Level = 0x00 to 0x64 (0-100%), 0xFF = low battery
@@ -265,7 +319,7 @@ This tool is also useful for capturing raw bytes from sensors and sharing them w
 
 ---
 
-## 10. Stale device detection
+## 11. Stale device detection
 
 The plugin checks all plugin devices every 60 seconds. If a device's `lastUpdate` timestamp is older than the configured stale threshold:
 
@@ -290,7 +344,7 @@ When any Z-Wave report arrives from the device:
 
 ---
 
-## 11. Z-Wave command classes handled
+## 12. Z-Wave command classes handled
 
 ### SENSOR_MULTILEVEL (0x31) — report 0x05
 
@@ -300,9 +354,16 @@ When any Z-Wave report arrives from the device:
 | 0x03 | `luminance` | % or lux (from scale byte) |
 | 0x05 | `humidity` | % |
 | 0x08 | `pressure` | kPa |
+| 0x0B | `velocity` | m/s |
 | 0x0F | `co2Level` | ppm |
+| 0x10 | `watts` | W |
 | 0x11 | `uvIndex` | (dimensionless) |
+| 0x12 | `voltage` | V |
+| 0x13 | `current` | A |
+| 0x15 | `airFlow` | m3/h |
+| 0x19 | `voc` | ppm |
 | 0x1B | `noise` | dB |
+| 0x1C | `soilMoisture` | % |
 
 Precision and size are decoded from the `prec_scale_size` byte. Handles 1, 2, and 4-byte signed big-endian values.
 
@@ -326,11 +387,20 @@ The plugin auto-detects byte order: if raw[5] is `0x00` or `0xFF` the frame is Z
 
 | Notification type | Event | State written |
 |---|---|---|
+| HOME_SECURITY (0x07) | 0x01/0x02 Intrusion | `motion=True`, `onOffState=True` |
+| HOME_SECURITY (0x07) | 0x05/0x06 Glass break | `motion=True`, `onOffState=True` |
 | HOME_SECURITY (0x07) | 0x07 Motion detected (location provided) | `motion=True`, `onOffState=True` |
 | HOME_SECURITY (0x07) | 0x08 Motion detected (unknown location) | `motion=True`, `onOffState=True` |
 | HOME_SECURITY (0x07) | 0x03/0x09 Tamper | `tamper=True` |
 | HOME_SECURITY (0x07) | 0x00 Idle (all clear) | clears `motion` and `tamper` |
-| HOME_SECURITY (0x07) | 0x00 Idle | clears `motion` and `tamper` |
+| ACCESS_CONTROL (0x06) | 0x01 Manual lock | `lockState=True`, `lastUser` updated |
+| ACCESS_CONTROL (0x06) | 0x02 Manual unlock | `lockState=False`, `lastUser` updated |
+| ACCESS_CONTROL (0x06) | 0x03 RF lock | `lockState=True`, `lastUser` updated |
+| ACCESS_CONTROL (0x06) | 0x04 RF unlock | `lockState=False`, `lastUser` updated |
+| ACCESS_CONTROL (0x06) | 0x05 Keypad lock | `lockState=True`, `lastUser` updated |
+| ACCESS_CONTROL (0x06) | 0x06 Keypad unlock | `lockState=False`, `lastUser` updated |
+| ACCESS_CONTROL (0x06) | 0x09 Auto lock | `lockState=True` |
+| ACCESS_CONTROL (0x06) | 0x0B Lock jammed | logged as warning |
 | ACCESS_CONTROL (0x06) | 0x16 Door open | `contact=True`, `onOffState=True` |
 | ACCESS_CONTROL (0x06) | 0x17 Door closed | `contact=False`, `onOffState=False` |
 | WATER (0x05) | 0x01/0x02 Leak | `waterLeak=True`, `onOffState=True` |
@@ -340,15 +410,49 @@ The plugin auto-detects byte order: if raw[5] is `0x00` or `0xFF` the frame is Z
 | CO (0x02) | 0x01/0x02 Alarm | `coAlarm=True`, `onOffState=True` |
 | CO (0x02) | 0x00 Cleared | `coAlarm=False`, `onOffState=False` |
 
+### DOOR_LOCK (0x62) — OPERATION_REPORT 0x03
+
+Decodes the full lock report directly from the lock hardware:
+
+| Field | State | Notes |
+|---|---|---|
+| Mode byte `0xFF` | `lockState=True` | Locked |
+| Mode byte `0x00` | `lockState=False` | Unlocked |
+| Door condition bit1 (inverted) | `boltState` | True = bolt locked |
+| Door condition bit2 (inverted) | `latchState` | True = latch closed |
+| Raw mode byte | `lockMode` | Full mode value |
+
+v2+ frames (5 bytes minimum): door condition byte extracted. v1 frames: bolt/latch states not available.
+
+### CENTRAL_SCENE (0x5B) — NOTIFICATION 0x03
+
+Decodes button/remote scene events:
+
+| Field | State | Notes |
+|---|---|---|
+| Scene number (byte 4) | `lastScene` | 1-based scene number |
+| Key attributes bits[2:0] | `lastSceneAction` | `pressed`, `released`, `held`, `repeated_1`, `repeated_2`... |
+| Timestamp | `sceneTimestamp` | `YYYY-MM-DD HH:MM:SS` |
+| Any non-release action | `onOffState=True` | |
+| Release action | `onOffState=False` | |
+
 ### METER (0x32) — report 0x02
 
-| Scale | State written | Unit |
-|---|---|---|
-| 0 | `kwh` | kWh |
-| 1 | `kwh` | kVAh |
-| 2 | `watts` | W |
+| Meter type | Scale | State written | Unit |
+|---|---|---|---|
+| Electric (0) | 0 | `kwh` | kWh |
+| Electric (0) | 1 | `kwh` | kVAh |
+| Electric (0) | 2 | `watts` | W |
+| Electric (0) | 4 (Scale2) | `voltage` | V |
+| Electric (0) | 5 (Scale2) | `current` | A |
+| Gas (1) | 0 | `gasCubicMeters` | m3 |
+| Gas (1) | 1 | `gasCubicMeters` | ft3 |
+| Gas (1) | 2 | `gasCubicMeters` | ccf |
+| Water (2) | 0 | `waterCubicMeters` | m3 |
+| Water (2) | 1 | `waterCubicMeters` | ft3 |
+| Water (2) | 2 | `waterCubicMeters` | gallons |
 
-Note: Voltage (V) and current (A) use METER_REPORT v3 Scale2 bit encoding and are fully supported.
+Voltage and current use METER_REPORT v3 Scale2 bit encoding: the Scale2 bit (byte 2 bit 7) is extracted and combined with the 2-bit scale field to form the full 3-bit scale value.
 
 ### SWITCH_BINARY (0x25) — report 0x03
 
@@ -360,7 +464,7 @@ Note: Voltage (V) and current (A) use METER_REPORT v3 Scale2 bit encoding and ar
 
 ### BATTERY (0x80) — report 0x03
 
-0–100 = battery %. `0xFF` = low battery sentinel (written as value=1, uiValue=`LOW`, warning logged).
+0–100 = battery %. `0xFF` = low battery sentinel (written as value=1, uiValue=`LOW`, warning logged). Sets `batteryLow=True` on all device types when level ≤ 20% or sentinel received.
 
 ### BASIC (0x20) — report 0x03
 
@@ -379,7 +483,7 @@ Multi-channel frames are unwrapped transparently. The source endpoint is extract
 
 ---
 
-## 12. Triggers and automations
+## 13. Triggers and automations
 
 Every state on the plugin device can be used as a trigger in Indigo.
 
@@ -389,9 +493,13 @@ Every state on the plugin device can be used as a trigger in Indigo.
 | Door opened | `contact` changes to True |
 | Door closed | `contact` changes to False |
 | Temperature threshold | `temperature` becomes greater than N |
-| Low battery | `batteryLevel` becomes less than 20 |
+| Low battery | `batteryLow` changes to True |
+| Low battery (by level) | `batteryLevel` becomes less than 20 |
 | Water leak | `waterLeak` changes to True |
 | Smoke alarm | `smoke` changes to True |
+| Lock locked | `lockState` changes to True |
+| Lock unlocked | `lockState` changes to False |
+| Scene button pressed | `lastScene` changes (any scene), or `lastSceneAction` becomes `pressed` |
 | Device goes offline | `deviceOnline` changes to False |
 | Device comes back online | `deviceOnline` changes to True |
 
@@ -399,7 +507,7 @@ The `onOffState` is set on all device types wherever meaningful, so standard Ind
 
 ---
 
-## 13. Troubleshooting
+## 14. Troubleshooting
 
 ### No states appear after creating the device
 
@@ -419,11 +527,17 @@ The `onOffState` is set on all device types wherever meaningful, so standard Ind
 
 **Fix:** The dropdown lists devices that have a valid node ID in their address property. Ensure the native Indigo Z-Wave device is enabled and has been successfully included in the Z-Wave network.
 
-### Multiple plugin devices on the same node are updating from wrong sources
+### Lock events appear on the wrong device
 
-**Cause:** Without endpoint IDs set, all plugin devices on a node receive all reports from that node.
+**Cause:** NOTIFICATION ACCESS_CONTROL lock events (0x06) and DOOR_LOCK reports (0x62) both update the `lockState` state. If you have both a Lock sensor type device and another sensor type device on the same node, the lock events will fan out to all devices on the node but only update lock-relevant states.
 
-**Fix:** If the hardware uses multi-channel addressing (CC 0x60), set Endpoint ID on each plugin device. If the hardware does not use endpoints, rely on each device type only writing relevant states — a temperature device will not write contact states, and vice versa.
+**Fix:** For a lock, use the **Lock** sensor type. If you also want contact state from the same lock, use a second plugin device with **Contact** sensor type and the same native device.
+
+### Scene controller shows wrong action
+
+**Cause:** Some scene controllers number their scenes from 0; others from 1. The plugin reports the exact scene number from the hardware.
+
+**Fix:** Enable debug logging and press the button — the log will show the exact `lastScene` value and `lastSceneAction`. Use those values in your trigger conditions.
 
 ### Temperature is showing in the wrong unit
 
@@ -435,29 +549,31 @@ The `onOffState` is set on all device types wherever meaningful, so standard Ind
 
 ---
 
-## 14. Known limitations
+## 15. Known limitations
 
 | Limitation | Detail |
 |---|---|
 | Battery devices | Only report on state change or scheduled wake-up. Cannot be polled on demand. |
 | METER_REPORT v3+ | Voltage (V) and current (A) now parsed via the v3 Scale2 bit. Power factor and other scale values above 5 are not decoded. |
+| DOOR_LOCK user codes | User code management (add/delete users) is a send-side operation. This plugin only receives and decodes lock status reports. |
 | S2 security | Indigo decrypts S2-encrypted frames before delivering them to plugins. The plugin only sees the decrypted payload — transparent. |
 | Proprietary command classes | 0xF0 and above are manufacturer-specific. The plugin logs the raw bytes in `rawLastReport` but does not decode them. |
 
 ---
 
-## 15. Changelog
+## 16. Changelog
 
 | Version | Date | Summary |
 |---|---|---|
-| **4.0** | 22-Mar-2026 | METER_REPORT v3 voltage (V) and current (A) — Scale2 bit (byte 2 bit 7) extracted and combined with 2-bit scale to form full 3-bit scale value; `voltage` and `current` device states now populated; 112 tests |
+| **5.0** | 03-May-2026 | DOOR_LOCK (CC 0x62) — lock mode, bolt/latch state (v2 door condition bitmask), last user; CENTRAL_SCENE (CC 0x5B) — scene number, key action (pressed/released/held/repeated), timestamp; NOTIFICATION ACCESS_CONTROL extended — manual/RF/keypad/auto lock and unlock ops with user ID extraction; NOTIFICATION HOME_SECURITY extended — intrusion (0x01/0x02) and glass break (0x05/0x06); METER gas (m3/ft3/ccf) and water (m3/ft3/gallons) meter types; SENSOR_MULTILEVEL extended — velocity, watts, voltage, current, air flow, VOC, soil moisture; Battery sensor type — dedicated sensorType with displayStatus and batteryLow flag; batteryLow state on all device types (True if ≤20% or 0xFF sentinel); 10 sensor types; 41 device states |
+| **4.0** | 22-Mar-2026 | METER_REPORT v3 voltage (V) and current (A) — Scale2 bit (byte 2 bit 7) extracted and combined with 2-bit scale to form full 3-bit scale value; `voltage` and `current` device states now populated |
 | **3.9** | 22-Mar-2026 | Startup banner in `__init__()` using raw constructor params (display_name, version, plugin_id); Info.plist standardised — PluginVersion key added (fixes blank version), IwsApiVersion, CFBundleURLTypes, GithubInfo added |
 | **3.8** | 22-Mar-2026 | SENSOR_BINARY (CC 0x30) logging moved to DEBUG always — NOTIFICATION is the primary INFO source for motion events |
 | **3.7** | 22-Mar-2026 | Log verbosity reduced — INFO only for report types matching the device's sensorType; secondary fan-out (e.g. temperature update on a Lux device) moved to DEBUG; HS_IDLE always DEBUG |
-| **3.6** | 22-Mar-2026 | `_init_display_status()` — corrects stale displayStatus on plugin reload/restart; 98 tests |
+| **3.6** | 22-Mar-2026 | `_init_display_status()` — corrects stale displayStatus on plugin reload/restart |
 | **3.5** | 22-Mar-2026 | displayStatus guards — motion events no longer overwrite displayStatus on Temperature/Lux/other non-motion device types |
 | **3.4** | 22-Mar-2026 | Fixed NOTIFICATION event 0x08 (motion detected unknown location, not cleared); SENSOR_BINARY type 0x0C (motion) added to lookup |
-| **3.3** | 22-Mar-2026 | Fixed serial API frame unwrapping — `subscribeToIncoming()` delivers the full Z-Wave serial frame; `_extract_node_and_bytes()` now strips the SOF+header to expose the command payload; 96 tests |
+| **3.3** | 22-Mar-2026 | Fixed serial API frame unwrapping — `subscribeToIncoming()` delivers the full Z-Wave serial frame; `_extract_node_and_bytes()` now strips the SOF+header to expose the command payload |
 | **3.2** | 22-Mar-2026 | Simplified to single-path UI — always select native Indigo device from dropdown; manual node ID entry removed |
 | **3.1** | 22-Mar-2026 | `indigo.zwave.subscribeToIncoming()` at startup so all Z-Wave bytes received regardless of node ownership; NOTIFICATION byte order auto-detection; native device picker added |
 | **3.0** | 21-Mar-2026 | Multi-channel endpoint routing (CC 0x60); stale device detection; temperature unit preference; wake-up interval tracking; Simulate dialog stays open |
