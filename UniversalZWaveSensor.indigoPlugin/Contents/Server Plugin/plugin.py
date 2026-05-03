@@ -6,8 +6,8 @@
 #              (temperature, humidity, contact, etc.) that Indigo does not expose
 #              natively. Uses subscribeToIncoming() to receive ALL Z-Wave bytes.
 # Author:      CliveS & Claude Sonnet 4.6
-# Date:        22-03-2026
-# Version:     3.9
+# Date:        03-05-2026
+# Version:     4.0
 
 import indigo
 import os as _os
@@ -33,7 +33,8 @@ CC_SWITCH_MULTILEVEL    = 0x26
 CC_SENSOR_BINARY        = 0x30
 CC_SENSOR_MULTILEVEL    = 0x31
 CC_METER                = 0x32
-CC_MULTI_CHANNEL        = 0x60   # Multi-channel / endpoint encapsulation
+CC_CENTRAL_SCENE        = 0x5B   # central scene notifications (buttons, remotes)
+CC_MULTI_CHANNEL        = 0x60   # multi-channel / endpoint encapsulation
 CC_DOOR_LOCK            = 0x62
 CC_NOTIFICATION         = 0x71   # replaces ALARM (0x9C) in v4+
 CC_BATTERY              = 0x80
@@ -51,6 +52,8 @@ CMD_BATTERY_REPORT              = 0x03
 CMD_WAKE_UP_NOTIFICATION        = 0x07
 CMD_WAKE_UP_INTERVAL_REPORT     = 0x06
 CMD_MULTI_CHANNEL_ENCAP         = 0x0D
+CMD_CENTRAL_SCENE_NOTIFICATION  = 0x03   # same opcode value as other *_REPORT commands
+CMD_DOOR_LOCK_REPORT            = 0x03   # same opcode value as other *_REPORT commands
 
 # ==============================================================================
 # SENSOR_MULTILEVEL (0x31) sensor type lookup
@@ -61,9 +64,16 @@ SENSOR_TYPES = {
     0x03: ("luminance",    "lux"),
     0x05: ("humidity",     "%"),
     0x08: ("pressure",     "kPa"),
+    0x0B: ("velocity",     "m/s"),
     0x0F: ("co2Level",     "ppm"),
+    0x10: ("watts",        "W"),    # power (reuses energy meter state)
     0x11: ("uvIndex",      ""),
+    0x12: ("voltage",      "V"),    # reuses meter voltage state
+    0x13: ("current",      "A"),    # reuses meter current state
+    0x15: ("airFlow",      "m3/h"),
+    0x19: ("voc",          "ppm"),
     0x1B: ("noise",        "dB"),
+    0x1C: ("soilMoisture", "%"),
 }
 
 # ==============================================================================
@@ -91,18 +101,31 @@ NOTIF_CO               = 0x02
 NOTIF_WATER            = 0x05
 NOTIF_ACCESS_CONTROL   = 0x06
 NOTIF_HOME_SECURITY    = 0x07
-NOTIF_POWER            = 0x08
+NOTIF_POWER_MANAGEMENT = 0x08
 
 # HOME_SECURITY events
-HS_MOTION_DETECTED     = 0x07   # Motion Detection, location provided
-HS_MOTION_DETECTED_NL  = 0x08   # Motion Detection, unknown location (same meaning)
-HS_TAMPER              = 0x03   # Tampering — product covering removed
-HS_TAMPER_ALT          = 0x09   # Tampering — alternate event code (some devices)
 HS_IDLE                = 0x00   # No event / all clear
+HS_INTRUSION           = 0x01   # Intrusion, location provided
+HS_INTRUSION_NL        = 0x02   # Intrusion, unknown location
+HS_TAMPER              = 0x03   # Tampering — product covering removed
+HS_GLASS_BREAK         = 0x05   # Glass break, location provided
+HS_GLASS_BREAK_NL      = 0x06   # Glass break, unknown location
+HS_MOTION_DETECTED     = 0x07   # Motion Detection, location provided
+HS_MOTION_DETECTED_NL  = 0x08   # Motion Detection, unknown location
+HS_TAMPER_ALT          = 0x09   # Tampering — product moved / alternate code
 
-# ACCESS_CONTROL events
+# ACCESS_CONTROL events — door/window open/close
 AC_DOOR_OPEN           = 0x16
 AC_DOOR_CLOSED         = 0x17
+# ACCESS_CONTROL events — lock operations (fired by smart locks via NOTIFICATION)
+AC_MANUAL_LOCK         = 0x01
+AC_MANUAL_UNLOCK       = 0x02
+AC_RF_LOCK             = 0x03
+AC_RF_UNLOCK           = 0x04
+AC_KEYPAD_LOCK         = 0x05
+AC_KEYPAD_UNLOCK       = 0x06
+AC_AUTO_LOCK           = 0x09
+AC_LOCK_JAMMED         = 0x0B
 
 # ==============================================================================
 # METER (0x32) electric scale lookup
@@ -120,6 +143,52 @@ METER_ELECTRIC_SCALES = {
     # scale=4/5/6 use METER_REPORT v3 — Scale2 bit in byte 2 combines with 2-bit scale in byte 3
     4: ("voltage", "V"),
     5: ("current", "A"),
+}
+
+METER_GAS_SCALES = {
+    0: ("gasCubicMeters", "m3"),
+    1: ("gasCubicMeters", "ft3"),
+    2: ("gasCubicMeters", "ccf"),
+}
+
+METER_WATER_SCALES = {
+    0: ("waterCubicMeters", "m3"),
+    1: ("waterCubicMeters", "gal"),
+    2: ("waterCubicMeters", "ft3"),
+}
+
+# ==============================================================================
+# NOTIFICATION (0x71) — POWER_MANAGEMENT event constants (type = NOTIF_POWER_MANAGEMENT)
+# ==============================================================================
+PM_POWER_APPLIED       = 0x01   # power has been applied
+PM_AC_DISCONNECTED     = 0x02   # AC mains disconnected
+PM_AC_RECONNECTED      = 0x03   # AC mains reconnected
+PM_SURGE               = 0x04   # surge detected
+PM_OVER_CURRENT        = 0x06   # over-current detected
+PM_REPLACE_BATTERY     = 0x0A   # replace battery soon
+PM_REPLACE_BATTERY_NOW = 0x0B   # replace battery now
+PM_BATTERY_CHARGING    = 0x0C   # battery is charging
+PM_BATTERY_CHARGED     = 0x0D   # battery is fully charged
+
+# ==============================================================================
+# CENTRAL_SCENE (0x5B) key attribute constants
+# ==============================================================================
+CS_KEY_PRESSED_1X  = 0x00   # single press
+CS_KEY_RELEASED    = 0x01   # key released (after held)
+CS_KEY_HELD_DOWN   = 0x02   # key held down (fires repeatedly)
+CS_KEY_PRESSED_2X  = 0x03   # double press
+CS_KEY_PRESSED_3X  = 0x04   # triple press
+CS_KEY_PRESSED_4X  = 0x05   # quad press
+CS_KEY_PRESSED_5X  = 0x06   # quint press
+
+CENTRAL_SCENE_KEY_ACTIONS = {
+    CS_KEY_PRESSED_1X: "pressed",
+    CS_KEY_RELEASED:   "released",
+    CS_KEY_HELD_DOWN:  "held",
+    CS_KEY_PRESSED_2X: "double",
+    CS_KEY_PRESSED_3X: "triple",
+    CS_KEY_PRESSED_4X: "quad",
+    CS_KEY_PRESSED_5X: "quint",
 }
 
 
@@ -244,6 +313,27 @@ class Plugin(indigo.PluginBase):
             watts = states.get("watts")
             if watts not in (None, ""):
                 device.updateStateOnServer("displayStatus", value=f"{watts} W")
+
+        elif dev_type == "battery":
+            val = states.get("batteryLevel")
+            if val is not None:
+                low = states.get("batteryLow", False)
+                device.updateStateOnServer("displayStatus", value="LOW" if low else f"{val}%")
+
+        elif dev_type == "lock":
+            locked = states.get("lockState")
+            if locked is not None:
+                device.updateStateOnServer(
+                    "displayStatus", value="locked" if locked else "unlocked"
+                )
+
+        elif dev_type == "scene":
+            scene = states.get("lastScene")
+            if scene is not None:
+                action = states.get("lastSceneAction", "")
+                device.updateStateOnServer(
+                    "displayStatus", value=f"S{scene} {action}".strip()
+                )
 
         # generic: leave displayStatus as-is (onOffState drives it at runtime)
 
@@ -434,6 +524,12 @@ class Plugin(indigo.PluginBase):
         elif cmd_class == CC_BASIC              and cmd_func == CMD_BASIC_REPORT:
             handled = self._handle_basic(device, raw)
 
+        elif cmd_class == CC_CENTRAL_SCENE     and cmd_func == CMD_CENTRAL_SCENE_NOTIFICATION:
+            handled = self._handle_central_scene(device, raw)
+
+        elif cmd_class == CC_DOOR_LOCK         and cmd_func == CMD_DOOR_LOCK_REPORT:
+            handled = self._handle_door_lock(device, raw)
+
         elif cmd_class == CC_WAKE_UP:
             handled = self._handle_wake_up(device, cmd_func, raw)
 
@@ -607,6 +703,18 @@ class Plugin(indigo.PluginBase):
                 device.updateStateOnServer("tamper",     value=True,  uiValue="tamper")
                 if _motion_disp:
                     device.updateStateOnServer("displayStatus", value="tamper")
+            elif notif_event in (HS_INTRUSION, HS_INTRUSION_NL):
+                _log(f"{device.name}: Intrusion DETECTED")
+                device.updateStateOnServer("motion",     value=True,  uiValue="intrusion")
+                device.updateStateOnServer("onOffState", value=True)
+                if _motion_disp:
+                    device.updateStateOnServer("displayStatus", value="intrusion")
+            elif notif_event in (HS_GLASS_BREAK, HS_GLASS_BREAK_NL):
+                _log(f"{device.name}: Glass break DETECTED")
+                device.updateStateOnServer("motion",     value=True,  uiValue="glass break")
+                device.updateStateOnServer("onOffState", value=True)
+                if _motion_disp:
+                    device.updateStateOnServer("displayStatus", value="glass break")
             elif notif_event == HS_IDLE:
                 self.logger.debug(f"{device.name}: Home security idle (all clear)")
                 device.updateStateOnServer("motion",     value=False, uiValue="clear")
@@ -625,19 +733,45 @@ class Plugin(indigo.PluginBase):
         elif notif_type == NOTIF_ACCESS_CONTROL:
             _dt            = device.pluginProps.get("sensorType", "generic")
             _contact_disp  = _dt in ("contact", "generic")
-            _log           = self.logger.info if _contact_disp else self.logger.debug
+            _lock_disp     = _dt in ("lock", "generic")
+            _log_c         = self.logger.info if _contact_disp else self.logger.debug
+            _log_l         = self.logger.info if _lock_disp    else self.logger.debug
             if notif_event == AC_DOOR_OPEN:
-                _log(f"{device.name}: Door/Window OPEN")
+                _log_c(f"{device.name}: Door/Window OPEN")
                 device.updateStateOnServer("contact",    value=True,  uiValue="open")
                 device.updateStateOnServer("onOffState", value=True)
                 if _contact_disp:
                     device.updateStateOnServer("displayStatus", value="open")
             elif notif_event == AC_DOOR_CLOSED:
-                _log(f"{device.name}: Door/Window CLOSED")
+                _log_c(f"{device.name}: Door/Window CLOSED")
                 device.updateStateOnServer("contact",    value=False, uiValue="closed")
                 device.updateStateOnServer("onOffState", value=False)
                 if _contact_disp:
                     device.updateStateOnServer("displayStatus", value="closed")
+            elif notif_event in (AC_MANUAL_LOCK, AC_RF_LOCK, AC_KEYPAD_LOCK, AC_AUTO_LOCK):
+                user_id = self._extract_notif_user(raw)
+                user_str = f" user={user_id}" if user_id else ""
+                _log_l(f"{device.name}: Lock LOCKED (event=0x{notif_event:02X}){user_str}")
+                device.updateStateOnServer("lockState",  value=True,  uiValue="locked")
+                device.updateStateOnServer("onOffState", value=True)
+                if user_id is not None:
+                    device.updateStateOnServer("lastUser", value=user_id)
+                if _lock_disp:
+                    device.updateStateOnServer("displayStatus", value="locked")
+            elif notif_event in (AC_MANUAL_UNLOCK, AC_RF_UNLOCK, AC_KEYPAD_UNLOCK):
+                user_id = self._extract_notif_user(raw)
+                user_str = f" user={user_id}" if user_id else ""
+                _log_l(f"{device.name}: Lock UNLOCKED (event=0x{notif_event:02X}){user_str}")
+                device.updateStateOnServer("lockState",  value=False, uiValue="unlocked")
+                device.updateStateOnServer("onOffState", value=False)
+                if user_id is not None:
+                    device.updateStateOnServer("lastUser", value=user_id)
+                if _lock_disp:
+                    device.updateStateOnServer("displayStatus", value="unlocked")
+            elif notif_event == AC_LOCK_JAMMED:
+                self.logger.warning(f"{device.name}: Lock JAMMED")
+                if _lock_disp:
+                    device.updateStateOnServer("displayStatus", value="jammed")
             else:
                 self.logger.info(
                     f"{device.name}: ACCESS_CONTROL event=0x{notif_event:02X} (unhandled)"
@@ -687,6 +821,36 @@ class Plugin(indigo.PluginBase):
             self._touch(device)
             return True
 
+        elif notif_type == NOTIF_POWER_MANAGEMENT:
+            if notif_event in (PM_REPLACE_BATTERY, PM_REPLACE_BATTERY_NOW):
+                urgency = "now" if notif_event == PM_REPLACE_BATTERY_NOW else "soon"
+                self.logger.warning(f"{device.name}: Battery — replace {urgency}")
+                device.updateStateOnServer("batteryLow", value=True)
+            elif notif_event == PM_AC_DISCONNECTED:
+                self.logger.warning(f"{device.name}: AC mains DISCONNECTED")
+                device.updateStateOnServer("onOffState",    value=False)
+                device.updateStateOnServer("displayStatus", value="AC off")
+            elif notif_event == PM_AC_RECONNECTED:
+                self.logger.info(f"{device.name}: AC mains RECONNECTED")
+                device.updateStateOnServer("onOffState",    value=True)
+                device.updateStateOnServer("displayStatus", value="AC on")
+            elif notif_event == PM_OVER_CURRENT:
+                self.logger.warning(f"{device.name}: Over-current DETECTED")
+                device.updateStateOnServer("displayStatus", value="over-current")
+            elif notif_event == PM_BATTERY_CHARGING:
+                self.logger.info(f"{device.name}: Battery charging")
+                device.updateStateOnServer("displayStatus", value="charging")
+            elif notif_event == PM_BATTERY_CHARGED:
+                self.logger.info(f"{device.name}: Battery fully charged")
+                device.updateStateOnServer("displayStatus", value="charged")
+            else:
+                self.logger.info(
+                    f"{device.name}: POWER_MANAGEMENT event=0x{notif_event:02X} "
+                    f"status=0x{notif_status:02X} (unhandled)"
+                )
+            self._touch(device)
+            return True
+
         # Unknown notification type — log for investigation
         self.logger.info(
             f"{device.name}: NOTIFICATION type=0x{notif_type:02X} "
@@ -698,18 +862,37 @@ class Plugin(indigo.PluginBase):
         """
         BATTERY_REPORT (CC=0x80, cmd=0x03)
         [0x80, 0x03, level]
-        level: 0-100 = battery %   0xFF = battery low warning
+        level: 0-100 = battery %   0xFF = battery low warning from device
+        batteryLow is set True when level is 0xFF sentinel or <= 20%.
+        For sensorType=battery devices, displayStatus and onOffState are also updated.
         """
         if len(raw) < 3:
             return False
 
-        level = raw[2]
-        if level == 0xFF:
-            self.logger.warning(f"{device.name}: Battery LOW")
-            device.updateStateOnServer("batteryLevel", value=1, uiValue="LOW")
+        raw_level = raw[2]
+        if raw_level == 0xFF:
+            level  = 1
+            is_low = True
+            ui_str = "LOW"
+            self.logger.warning(f"{device.name}: Battery LOW warning received from device")
         else:
+            level  = raw_level
+            is_low = level <= 20
+            ui_str = f"{level}%"
             self.logger.info(f"{device.name}: Battery = {level}%")
-            device.updateStateOnServer("batteryLevel", value=level, uiValue=f"{level}%")
+
+        device.updateStateOnServer("batteryLevel", value=level, uiValue=ui_str)
+        device.updateStateOnServer("batteryLow",   value=is_low)
+
+        dev_type = device.pluginProps.get("sensorType", "generic")
+        if dev_type == "battery":
+            device.updateStateOnServer("displayStatus", value=ui_str)
+            device.updateStateOnServer("onOffState",    value=not is_low)
+            device.updateStateImageOnServer(
+                indigo.kStateImageSel.SensorTripped if is_low
+                else indigo.kStateImageSel.SensorOn
+            )
+
         self._touch(device)
         return True
 
@@ -761,9 +944,31 @@ class Plugin(indigo.PluginBase):
                 self._touch(device)
                 return True
 
+        elif meter_type == METER_GAS:
+            scale_info = METER_GAS_SCALES.get(scale)
+            if scale_info:
+                state_key, unit = scale_info
+                ui_str = f"{value:.3f} {unit}"
+                self.logger.info(f"{device.name}: gas = {ui_str}")
+                device.updateStateOnServer(state_key,       value=round(value, 3), uiValue=ui_str)
+                device.updateStateOnServer("displayStatus", value=ui_str)
+                self._touch(device)
+                return True
+
+        elif meter_type == METER_WATER:
+            scale_info = METER_WATER_SCALES.get(scale)
+            if scale_info:
+                state_key, unit = scale_info
+                ui_str = f"{value:.3f} {unit}"
+                self.logger.info(f"{device.name}: water = {ui_str}")
+                device.updateStateOnServer(state_key,       value=round(value, 3), uiValue=ui_str)
+                device.updateStateOnServer("displayStatus", value=ui_str)
+                self._touch(device)
+                return True
+
         self.logger.info(
             f"{device.name}: METER type=0x{meter_type:02X} scale={scale} "
-            f"value={value} (add to METER_ELECTRIC_SCALES to handle)"
+            f"value={value} (unhandled meter type or scale)"
         )
         return False
 
@@ -853,6 +1058,89 @@ class Plugin(indigo.PluginBase):
 
         return False
 
+    def _handle_central_scene(self, device, raw) -> bool:
+        """
+        CENTRAL_SCENE_NOTIFICATION (CC=0x5B, cmd=0x03)
+        v1/v2: [0x5B, 0x03, seq_no, key_attributes, scene_number]
+        key_attributes bits [2:0]: action (0=pressed, 1=released, 2=held, 3=double, ...)
+        bit 7 of key_attributes = slow_refresh flag (ignore for our purposes)
+        Fires whenever a button on a scene controller (WallMote, remote, etc.) is used.
+        """
+        if len(raw) < 5:
+            return False
+
+        seq_no        = raw[2]
+        key_attr_byte = raw[3]
+        scene_number  = raw[4]
+        action_code   = key_attr_byte & 0x07   # strip slow_refresh bit
+
+        action_str = CENTRAL_SCENE_KEY_ACTIONS.get(action_code, f"action_{action_code}")
+        ts         = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        disp_str   = f"S{scene_number} {action_str}"
+
+        self.logger.info(
+            f"{device.name}: Scene {scene_number} — {action_str} (seq={seq_no})"
+        )
+        device.updateStateOnServer("lastScene",       value=scene_number)
+        device.updateStateOnServer("lastSceneAction", value=action_str)
+        device.updateStateOnServer("sceneTimestamp",  value=ts)
+        device.updateStateOnServer("displayStatus",   value=disp_str)
+        # onOffState: True on press/held/double, False on release
+        device.updateStateOnServer("onOffState",      value=(action_code != CS_KEY_RELEASED))
+        self._touch(device)
+        return True
+
+    def _handle_door_lock(self, device, raw) -> bool:
+        """
+        DOOR_LOCK_OPERATION_REPORT (CC=0x62, cmd=0x03)
+        v1:  [0x62, 0x03, mode]
+        v2+: [0x62, 0x03, mode, handles_mode, door_condition, timeout_min, timeout_sec]
+        mode: 0x00=unsecured  0x01=unsecured+timeout  0x10=inside-handle  0xFF=secured
+
+        door_condition byte (raw[4], v2+ only):
+          bit 0 SET = door physically open
+          bit 1 SET = bolt unlocked  (0 = bolt locked / deadbolt extended)
+          bit 2 SET = latch open     (0 = latch closed / latched)
+        """
+        if len(raw) < 3:
+            return False
+
+        mode      = raw[2]
+        is_locked = (mode == 0xFF)
+        label     = "locked" if is_locked else "unlocked"
+
+        self.logger.info(f"{device.name}: Lock {label} (mode=0x{mode:02X})")
+        device.updateStateOnServer("lockState",     value=is_locked, uiValue=label)
+        device.updateStateOnServer("lockMode",      value=mode)
+        device.updateStateOnServer("onOffState",    value=is_locked)
+        device.updateStateOnServer("displayStatus", value=label)
+        device.updateStateImageOnServer(
+            indigo.kStateImageSel.SensorTripped if is_locked
+            else indigo.kStateImageSel.SensorOff
+        )
+
+        # v2+ door condition bitmask
+        if len(raw) >= 5:
+            door_condition = raw[4]
+            bolt_locked    = not bool((door_condition >> 1) & 0x01)
+            latch_closed   = not bool((door_condition >> 2) & 0x01)
+            self.logger.debug(
+                f"{device.name}: door_condition=0x{door_condition:02X} "
+                f"bolt={'locked' if bolt_locked else 'unlocked'} "
+                f"latch={'closed' if latch_closed else 'open'}"
+            )
+            device.updateStateOnServer(
+                "boltState",  value=bolt_locked,
+                uiValue="locked" if bolt_locked else "unlocked"
+            )
+            device.updateStateOnServer(
+                "latchState", value=latch_closed,
+                uiValue="closed" if latch_closed else "open"
+            )
+
+        self._touch(device)
+        return True
+
     # ==========================================================================
     # Stale device detection
     # ==========================================================================
@@ -920,14 +1208,20 @@ class Plugin(indigo.PluginBase):
         Returns values_dict to keep the dialog open for further testing.
 
         Example byte sequences:
-          Temperature 21.5 degC:   31 05 01 22 00 D7
-          Motion detected (NOTIF): 71 05 00 00 00 FF 07 07 00
-          Motion cleared  (NOTIF): 71 05 00 00 00 FF 07 08 00
-          Door open       (NOTIF): 71 05 00 00 00 FF 06 16 00
-          Door closed     (NOTIF): 71 05 00 00 00 FF 06 17 00
-          Battery 85%:             80 03 55
-          Wake-up interval 5min:   84 06 00 01 2C 6F
-          Wake-up notification:    84 07
+          Temperature 21.5 degC:      31 05 01 22 00 D7
+          Humidity 35.1%:             31 05 05 22 01 5F
+          Motion detected (NOTIF):    71 05 00 00 00 FF 07 07 00
+          Motion cleared  (NOTIF):    71 05 00 00 00 FF 07 08 00
+          Door open       (NOTIF):    71 05 00 00 00 FF 06 16 00
+          Door closed     (NOTIF):    71 05 00 00 00 FF 06 17 00
+          Lock locked     (CC 0x62):  62 03 FF
+          Lock unlocked   (CC 0x62):  62 03 00
+          Scene 1 pressed (WallMote): 5B 03 01 00 01
+          Scene 2 double  (WallMote): 5B 03 02 03 02
+          Battery 85%:                80 03 55
+          Battery LOW sentinel:       80 03 FF
+          Wake-up interval 5min:      84 06 00 01 2C 6F
+          Wake-up notification:       84 07
         """
         try:
             dev_id_str = str(values_dict.get("deviceId", "")).strip()
@@ -1041,6 +1335,20 @@ class Plugin(indigo.PluginBase):
                 indigo.kStateImageSel.PowerOn if is_on
                 else indigo.kStateImageSel.PowerOff
             )
+        elif sensor_type == "battery":
+            device.updateStateImageOnServer(
+                indigo.kStateImageSel.SensorTripped if not is_on
+                else indigo.kStateImageSel.SensorOn
+            )
+        elif sensor_type == "lock":
+            label = "locked" if is_on else "unlocked"
+            device.updateStateOnServer("displayStatus", value=label)
+            device.updateStateImageOnServer(
+                indigo.kStateImageSel.SensorTripped if is_on
+                else indigo.kStateImageSel.SensorOff
+            )
+        elif sensor_type == "scene":
+            device.updateStateImageOnServer(indigo.kStateImageSel.SensorOn)
         else:   # generic
             label = "on" if is_on else "off"
             device.updateStateOnServer("displayStatus", value=label)
@@ -1048,6 +1356,19 @@ class Plugin(indigo.PluginBase):
                 indigo.kStateImageSel.SensorOn if is_on
                 else indigo.kStateImageSel.SensorOff
             )
+
+    def _extract_notif_user(self, raw) -> int | None:
+        """
+        Extract user slot ID from a NOTIFICATION_REPORT event params field.
+        Frame layout: [..., notif_event, event_params_len, event_param_1, ...]
+        raw[7]=event, raw[8]=params_len, raw[9]=user_id (if params_len >= 1).
+        Returns None if no event params are present.
+        User 0 = no user / unknown; 251 = master code; 1-250 = regular slots.
+        """
+        if len(raw) >= 10 and raw[8] >= 1:
+            user_id = raw[9]
+            return user_id if user_id > 0 else None
+        return None
 
     def _get_node_id(self, device) -> int | None:
         node_str = device.pluginProps.get("nodeId", "").strip()

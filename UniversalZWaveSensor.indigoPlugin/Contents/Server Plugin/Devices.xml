@@ -18,6 +18,9 @@
                     <Option value="humidity">Humidity Sensor</Option>
                     <Option value="luminance">Luminance Sensor</Option>
                     <Option value="energy">Energy Monitor (watts)</Option>
+                    <Option value="battery">Battery Sensor</Option>
+                    <Option value="lock">Lock (door lock)</Option>
+                    <Option value="scene">Scene Controller (button/remote)</Option>
                     <Option value="generic">Generic (on/off)</Option>
                 </List>
             </Field>
@@ -54,6 +57,11 @@
                 <TriggerLabel>Pressure changes</TriggerLabel>
                 <ControlPageLabel>Pressure (kPa)</ControlPageLabel>
             </State>
+            <State id="velocity">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Velocity changes</TriggerLabel>
+                <ControlPageLabel>Velocity (m/s)</ControlPageLabel>
+            </State>
             <State id="co2Level">
                 <ValueType>Number</ValueType>
                 <TriggerLabel>CO2 level changes</TriggerLabel>
@@ -64,10 +72,25 @@
                 <TriggerLabel>UV index changes</TriggerLabel>
                 <ControlPageLabel>UV Index</ControlPageLabel>
             </State>
+            <State id="airFlow">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Air flow changes</TriggerLabel>
+                <ControlPageLabel>Air Flow (m3/h)</ControlPageLabel>
+            </State>
+            <State id="voc">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>VOC level changes</TriggerLabel>
+                <ControlPageLabel>VOC (ppm)</ControlPageLabel>
+            </State>
             <State id="noise">
                 <ValueType>Number</ValueType>
                 <TriggerLabel>Noise level changes</TriggerLabel>
                 <ControlPageLabel>Noise (dB)</ControlPageLabel>
+            </State>
+            <State id="soilMoisture">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Soil moisture changes</TriggerLabel>
+                <ControlPageLabel>Soil Moisture %</ControlPageLabel>
             </State>
 
             <!-- Primary display state — String so Indigo renders it in device list -->
@@ -147,12 +170,71 @@
                 <TriggerLabel>Current changes</TriggerLabel>
                 <ControlPageLabel>Current (A)</ControlPageLabel>
             </State>
+            <State id="gasCubicMeters">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Gas consumption changes</TriggerLabel>
+                <ControlPageLabel>Gas (m3)</ControlPageLabel>
+            </State>
+            <State id="waterCubicMeters">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Water consumption changes</TriggerLabel>
+                <ControlPageLabel>Water (m3)</ControlPageLabel>
+            </State>
+
+            <!-- Door lock (CC 0x62 / NOTIFICATION ACCESS_CONTROL lock ops) -->
+            <State id="lockState">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Lock state changes</TriggerLabel>
+                <ControlPageLabel>Locked</ControlPageLabel>
+            </State>
+            <State id="lockMode">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Lock mode changes</TriggerLabel>
+                <ControlPageLabel>Lock Mode</ControlPageLabel>
+            </State>
+            <State id="boltState">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Bolt state changes</TriggerLabel>
+                <ControlPageLabel>Bolt Locked</ControlPageLabel>
+            </State>
+            <State id="latchState">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Latch state changes</TriggerLabel>
+                <ControlPageLabel>Latch Closed</ControlPageLabel>
+            </State>
+            <State id="lastUser">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Last user changes</TriggerLabel>
+                <ControlPageLabel>Last User</ControlPageLabel>
+            </State>
+
+            <!-- Scene controller (CENTRAL_SCENE 0x5B) -->
+            <State id="lastScene">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Scene changes</TriggerLabel>
+                <ControlPageLabel>Last Scene</ControlPageLabel>
+            </State>
+            <State id="lastSceneAction">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Scene action changes</TriggerLabel>
+                <ControlPageLabel>Last Action</ControlPageLabel>
+            </State>
+            <State id="sceneTimestamp">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Scene timestamp changes</TriggerLabel>
+                <ControlPageLabel>Scene Time</ControlPageLabel>
+            </State>
 
             <!-- Universal -->
             <State id="batteryLevel">
                 <ValueType>Number</ValueType>
                 <TriggerLabel>Battery level changes</TriggerLabel>
                 <ControlPageLabel>Battery %</ControlPageLabel>
+            </State>
+            <State id="batteryLow">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Battery low state changes</TriggerLabel>
+                <ControlPageLabel>Battery Low</ControlPageLabel>
             </State>
             <State id="lastUpdate">
                 <ValueType>String</ValueType>
