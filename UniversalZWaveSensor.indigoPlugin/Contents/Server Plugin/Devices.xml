@@ -823,6 +823,95 @@
     </Device>
 
     <!-- ============================================================
+         PLUG / RELAY WITH ENERGY MONITORING
+         States: switchState, watts, kwh, voltage, current + universal
+         ============================================================ -->
+    <Device type="custom" id="zwaveSensorPlug">
+        <Name>Plug / Relay</Name>
+        <ConfigUI>
+            <Field id="sourceDeviceId" type="menu" defaultValue="none">
+                <Label>Native Indigo Z-Wave Device</Label>
+                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Description>
+                <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="endpointId" type="textfield" defaultValue="">
+                <Label>Endpoint ID</Label>
+                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
+            <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
+        </ConfigUI>
+        <States>
+            <State id="switchState">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Switch state changes</TriggerLabel>
+                <ControlPageLabel>Switch</ControlPageLabel>
+            </State>
+            <State id="watts">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Power changes</TriggerLabel>
+                <ControlPageLabel>Power (W)</ControlPageLabel>
+            </State>
+            <State id="kwh">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Energy changes</TriggerLabel>
+                <ControlPageLabel>Energy (kWh)</ControlPageLabel>
+            </State>
+            <State id="voltage">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Voltage changes</TriggerLabel>
+                <ControlPageLabel>Voltage (V)</ControlPageLabel>
+            </State>
+            <State id="current">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Current changes</TriggerLabel>
+                <ControlPageLabel>Current (A)</ControlPageLabel>
+            </State>
+            <State id="onOffState">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Primary state changes</TriggerLabel>
+                <ControlPageLabel>Active</ControlPageLabel>
+            </State>
+            <State id="displayStatus">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Status changes</TriggerLabel>
+                <ControlPageLabel>Status</ControlPageLabel>
+            </State>
+            <State id="battery">
+                <ValueType>Integer</ValueType>
+                <TriggerLabel>Battery level changes</TriggerLabel>
+                <ControlPageLabel>Battery %</ControlPageLabel>
+            </State>
+            <State id="batteryLow">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Battery low state changes</TriggerLabel>
+                <ControlPageLabel>Battery Low</ControlPageLabel>
+            </State>
+            <State id="lastUpdate">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last update time changes</TriggerLabel>
+                <ControlPageLabel>Last Updated</ControlPageLabel>
+            </State>
+            <State id="deviceOnline">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Device online state changes</TriggerLabel>
+                <ControlPageLabel>Online</ControlPageLabel>
+            </State>
+            <State id="wakeUpInterval">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Wake-up interval changes</TriggerLabel>
+                <ControlPageLabel>Wake-up Interval</ControlPageLabel>
+            </State>
+            <State id="rawLastReport">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last raw report changes</TriggerLabel>
+                <ControlPageLabel>Last Raw Report</ControlPageLabel>
+            </State>
+        </States>
+        <UiDisplayStateId>displayStatus</UiDisplayStateId>
+    </Device>
+
+    <!-- ============================================================
          LEGACY — kept for devices created before v5.1.
          New devices should use one of the typed entries above.
          ============================================================ -->

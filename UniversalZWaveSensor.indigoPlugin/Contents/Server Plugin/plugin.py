@@ -203,6 +203,7 @@ DEVICE_TYPE_SENSOR_TYPE = {
     "zwaveSensorHumidity":    "humidity",
     "zwaveSensorLuminance":   "luminance",
     "zwaveSensorEnergy":      "energy",
+    "zwaveSensorPlug":        "plug",
     "zwaveSensorBattery":     "battery",
     "zwaveSensorLock":        "lock",
     "zwaveSensorScene":       "scene",
@@ -355,6 +356,15 @@ class Plugin(indigo.PluginBase):
             watts = states.get("watts")
             if watts not in (None, ""):
                 device.updateStateOnServer("displayStatus", value=f"{watts} W")
+
+        elif dev_type == "plug":
+            watts = states.get("watts")
+            if watts not in (None, ""):
+                device.updateStateOnServer("displayStatus", value=f"{watts} W")
+            else:
+                on = states.get("switchState")
+                if on is not None:
+                    device.updateStateOnServer("displayStatus", value="on" if on else "off")
 
         elif dev_type == "battery":
             val = states.get("battery")
