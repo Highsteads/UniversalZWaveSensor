@@ -31,6 +31,7 @@ The plugin also provides a **Simulate Z-Wave Report** tool — useful for sendin
 - **Stale device detection** — configurable threshold (4–72 h); logs a warning and sets `deviceOnline=False` when a device goes silent; clears automatically when any report arrives
 - **Wake-up interval tracking** — WAKE_UP_INTERVAL_REPORT stores the interval in the `wakeUpInterval` state; wake-up notifications mark the device as alive
 - **Simulate Z-Wave Report** — menu item lets you feed raw hex bytes to any plugin device for end-to-end testing; dialog stays open for iterative testing
+- **Generate Indigo Support Report** — one-click menu item dumps manufacturer ID, product type/ID, supported command classes, all device properties and states to the Indigo log; formatted for pasting into the Indigo forum to request native device support
 - **Debug logging** — toggleable; logs raw Z-Wave bytes and all state updates
 - **Mock test suite** — full test coverage without needing an Indigo server
 
@@ -146,6 +147,25 @@ Select a plugin device, enter space-separated hex bytes, and click **Send**. The
 | `84 07` | Wake-up notification |
 | `84 06 00 01 2C 6F` | Wake-up interval = 300 s (5 min) |
 | `60 0D 00 01 31 05 01 22 00 D7` | Multi-channel ep 1: temperature 21.5 degC |
+
+---
+
+## Generate Indigo Support Report
+
+**Plugins → Universal Z-Wave Sensor → Generate Indigo Support Report...**
+
+Select a plugin device and click **Generate Report**. A formatted block is written to the Indigo log containing everything Matt and Jay (Indigo's authors) need to add native support for the device:
+
+| Section | What it contains |
+|---|---|
+| Plugin Device | Name, type, node ID, endpoint, last update, raw last report bytes |
+| Plugin Device States | All current state values |
+| Native Z-Wave Device | Name, model, sub-model, description, protocol, Indigo ID |
+| Native Device Z-Wave Properties | `ownerProps` — manufacturer ID, product type ID, product ID, supported command classes with versions |
+| Native Device States | All states Indigo currently tracks for the native device |
+| Native Device Global Props | All plugin-stored properties across every plugin |
+
+Copy the entire block from the Indigo log and paste it into a post on the [Indigo forum](https://forums.indigodomo.com/viewforum.php?f=18).
 
 ---
 
