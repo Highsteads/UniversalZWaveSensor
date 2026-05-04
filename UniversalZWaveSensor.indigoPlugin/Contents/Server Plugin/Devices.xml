@@ -867,16 +867,6 @@
                 <TriggerLabel>Current changes</TriggerLabel>
                 <ControlPageLabel>Current (A)</ControlPageLabel>
             </State>
-            <State id="onOffState">
-                <ValueType>Boolean</ValueType>
-                <TriggerLabel>Primary state changes</TriggerLabel>
-                <ControlPageLabel>Active</ControlPageLabel>
-            </State>
-            <State id="displayStatus">
-                <ValueType>String</ValueType>
-                <TriggerLabel>Status changes</TriggerLabel>
-                <ControlPageLabel>Status</ControlPageLabel>
-            </State>
             <State id="battery">
                 <ValueType>Integer</ValueType>
                 <TriggerLabel>Battery level changes</TriggerLabel>
@@ -908,7 +898,6 @@
                 <ControlPageLabel>Last Raw Report</ControlPageLabel>
             </State>
         </States>
-        <UiDisplayStateId>displayStatus</UiDisplayStateId>
     </Device>
 
     <!-- ============================================================

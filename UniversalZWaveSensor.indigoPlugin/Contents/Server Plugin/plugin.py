@@ -358,13 +358,7 @@ class Plugin(indigo.PluginBase):
                 device.updateStateOnServer("displayStatus", value=f"{watts} W")
 
         elif dev_type == "plug":
-            watts = states.get("watts")
-            if watts not in (None, ""):
-                device.updateStateOnServer("displayStatus", value=f"{watts} W")
-            else:
-                on = states.get("switchState")
-                if on is not None:
-                    device.updateStateOnServer("displayStatus", value="on" if on else "off")
+            pass   # relay type: onOffState is native, no displayStatus to set
 
         elif dev_type == "battery":
             val = states.get("battery")
