@@ -456,6 +456,8 @@ class Plugin(indigo.PluginBase):
         for dev in indigo.devices:
             if dev.pluginId == self.pluginId:
                 continue   # skip our own plugin devices
+            if dev.protocol != indigo.kProtocol.ZWave:
+                continue   # Z-Wave devices only
             node_str = str(getattr(dev, "address", "")).strip()
             if node_str.isdigit() and 1 <= int(node_str) <= 232:
                 result.append((str(dev.id), f"{dev.name}  (Node {node_str})"))
