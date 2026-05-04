@@ -1,6 +1,6 @@
 # Universal Z-Wave Sensor — Indigo Plugin
 
-**Version 5.3** | Indigo 2025.2+ | Python 3.13+
+**Version 5.5** | Indigo 2025.2+ | Python 3.13+
 
 Creates companion plugin devices alongside your existing Indigo Z-Wave devices, exposing sensor values that Indigo does not capture natively — temperature, humidity, luminance, contact state, lock state, scene controller events, and more.
 
@@ -205,6 +205,8 @@ No Indigo installation required — `indigo` is fully mocked. All tests should p
 
 | Version | Date | Changes |
 |---|---|---|
+| 5.5 | 04-May-2026 | Fix displayStatus state-not-defined error on Plug/Relay devices — all displayStatus writes now route through _safe_update and silently skip device types that do not define that state |
+| 5.4 | 04-May-2026 | Generate Indigo Support Report menu item — dumps manufacturer ID, product type/ID, supported command classes, owner props, and all device states to the Indigo log, formatted for pasting into the Indigo forum; Show Plugin Info menu item added |
 | 5.3 | 04-May-2026 | Removed battery/batteryLow/wakeUpInterval states from Plug/Relay device type (mains-powered, irrelevant) |
 | 5.2 | 04-May-2026 | Plug/Relay device type (zwaveSensorPlug) — on/off control via actionControlDevice, energy monitoring (W/kWh/V/A), state sync at startup from native device; fix batteryLevel→battery (batteryLevel is a reserved Indigo native property — custom state silently dropped; use battery/Integer instead); Z-Wave protocol filter on native device picker; deviceStartComm re-entry guard (_devices_starting set) fixes maximum recursion depth error when stateListOrDisplayStateIdChanged() re-triggers startup |
 | 5.1 | 04-May-2026 | Per-type state lists in Devices.xml — states now declared per device type rather than shared; battery state forced visible via _ensure_states_visible() on startup |
