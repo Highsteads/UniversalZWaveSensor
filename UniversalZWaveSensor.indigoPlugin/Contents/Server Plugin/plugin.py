@@ -305,6 +305,23 @@ class Plugin(indigo.PluginBase):
         if state_id in device.states:
             device.updateStateOnServer(state_id, **kwargs)
 
+    def _sync_plug_state(self, device):
+        """At startup, mirror the native source device's on/off state into the plug
+        device so it shows the correct state immediately without waiting for a report."""
+        if self._sensor_type(device) != "plug":
+            return
+        source_id_str = device.pluginProps.get("sourceDeviceId", "").strip()
+        if not source_id_str or not source_id_str.isdigit():
+            return
+        source_id = int(source_id_str)
+        if source_id not in indigo.devices:
+            return
+        source = indigo.devices[source_id]
+        on_state = getattr(source, "onState", None)
+        if on_state is not None:
+            device.updateStateOnServer("onOffState", value=on_state)
+            self.logger.info(f"  Synced '{device.name}' state from source: {'on' if on_state else 'off'}")
+
     def _ensure_states_visible(self, device):
         """Force-write states that stateListOrDisplayStateIdChanged() may have added
         retroactively but that Indigo hides until written at least once."""
@@ -393,6 +410,7 @@ class Plugin(indigo.PluginBase):
             # Re-fetch device after state list refresh — local object may be stale
             device = indigo.devices[device.id]
             self._ensure_states_visible(device)
+            self._sync_plug_state(device)
             self._init_display_status(device)
             node_id = self._get_node_id(device)
             if node_id:
