@@ -8,7 +8,7 @@ Creates companion plugin devices alongside your existing Indigo Z-Wave devices, 
 
 ## Why this exists
 
-When you include a Z-Wave sensor in Indigo, Indigo creates a native device for it based on what it recognises. That works well for the values Indigo knows about. But many sensors send additional data that Indigo ignores — a door/window sensor that also reports temperature, a multi-sensor where Indigo captures motion but not humidity or luminance, a lock that sends detailed bolt/latch state, a scene controller Indigo doesn't support at all.
+When you include a Z-Wave sensor in Indigo, Indigo creates a native device for it based on what it recognises. That works well for the Devices Indigo knows about. But many new Devices that are not supported by Indigo can now be included with this plugin until it becomes included into Indigo.
 
 This plugin fills that gap. You select the existing native Indigo device, choose the sensor type you want to capture, and the plugin creates a properly-typed Indigo device that works in triggers, control pages, and action groups exactly like any native device.
 
