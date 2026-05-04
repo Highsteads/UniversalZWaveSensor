@@ -295,7 +295,7 @@ class Plugin(indigo.PluginBase):
         New typed devices (v5.1+) use deviceTypeId; legacy zwaveSensor reads pluginProps."""
         if device.deviceTypeId in DEVICE_TYPE_SENSOR_TYPE:
             return DEVICE_TYPE_SENSOR_TYPE[device.deviceTypeId]
-        return self._sensor_type(device)
+        return device.pluginProps.get("sensorType", "generic")
 
     def _safe_update(self, device, state_id, **kwargs):
         """Update a device state only if that state exists on the device type.
