@@ -304,6 +304,16 @@ class Plugin(indigo.PluginBase):
         if state_id in device.states:
             device.updateStateOnServer(state_id, **kwargs)
 
+    def _ensure_states_visible(self, device):
+        """Force-write states that stateListOrDisplayStateIdChanged() may have added
+        retroactively but that Indigo hides until written at least once."""
+        if "batteryLevel" in device.states:
+            current = device.states.get("batteryLevel", 0)
+            if current:
+                device.updateStateOnServer("batteryLevel", value=current, uiValue=f"{current}%")
+            else:
+                device.updateStateOnServer("batteryLevel", value=0, uiValue="—")
+
     def _init_display_status(self, device):
         """Set displayStatus from existing state values at startup / reload.
 
@@ -379,6 +389,7 @@ class Plugin(indigo.PluginBase):
         try:
             self.logger.info(f"Starting: '{device.name}'")
             device.stateListOrDisplayStateIdChanged()
+            self._ensure_states_visible(device)
             self._init_display_status(device)
             node_id = self._get_node_id(device)
             if node_id:
