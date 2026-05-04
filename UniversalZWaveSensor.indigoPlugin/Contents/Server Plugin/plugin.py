@@ -307,12 +307,9 @@ class Plugin(indigo.PluginBase):
     def _ensure_states_visible(self, device):
         """Force-write states that stateListOrDisplayStateIdChanged() may have added
         retroactively but that Indigo hides until written at least once."""
-        if "batteryLevel" in device.states:
-            current = device.states.get("batteryLevel", 0)
-            if current:
-                device.updateStateOnServer("batteryLevel", value=current, uiValue=f"{current}%")
-            else:
-                device.updateStateOnServer("batteryLevel", value=0, uiValue="—")
+        if "battery" in device.states:
+            current = device.states.get("battery", 0)
+            device.updateStateOnServer("battery", value=current)
 
     def _init_display_status(self, device):
         """Set displayStatus from existing state values at startup / reload.
@@ -360,7 +357,7 @@ class Plugin(indigo.PluginBase):
                 device.updateStateOnServer("displayStatus", value=f"{watts} W")
 
         elif dev_type == "battery":
-            val = states.get("batteryLevel")
+            val = states.get("battery")
             if val is not None:
                 low = states.get("batteryLow", False)
                 device.updateStateOnServer("displayStatus", value="LOW" if low else f"{val}%")
@@ -389,6 +386,8 @@ class Plugin(indigo.PluginBase):
         try:
             self.logger.info(f"Starting: '{device.name}'")
             device.stateListOrDisplayStateIdChanged()
+            # Re-fetch device after state list refresh — local object may be stale
+            device = indigo.devices[device.id]
             self._ensure_states_visible(device)
             self._init_display_status(device)
             node_id = self._get_node_id(device)
@@ -933,7 +932,7 @@ class Plugin(indigo.PluginBase):
             ui_str = f"{level}%"
             self.logger.info(f"{device.name}: Battery = {level}%")
 
-        device.updateStateOnServer("batteryLevel", value=level, uiValue=ui_str)
+        device.updateStateOnServer("battery", value=level, uiValue=ui_str)
         device.updateStateOnServer("batteryLow",   value=is_low)
 
         dev_type = self._sensor_type(device)

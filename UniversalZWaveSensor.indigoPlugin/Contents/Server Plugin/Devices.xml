@@ -46,8 +46,8 @@
                 <TriggerLabel>Status changes</TriggerLabel>
                 <ControlPageLabel>Status</ControlPageLabel>
             </State>
-            <State id="batteryLevel">
-                <ValueType>Number</ValueType>
+            <State id="battery">
+                <ValueType>Integer</ValueType>
                 <TriggerLabel>Battery level changes</TriggerLabel>
                 <ControlPageLabel>Battery %</ControlPageLabel>
             </State>
@@ -120,8 +120,8 @@
                 <TriggerLabel>Status changes</TriggerLabel>
                 <ControlPageLabel>Status</ControlPageLabel>
             </State>
-            <State id="batteryLevel">
-                <ValueType>Number</ValueType>
+            <State id="battery">
+                <ValueType>Integer</ValueType>
                 <TriggerLabel>Battery level changes</TriggerLabel>
                 <ControlPageLabel>Battery %</ControlPageLabel>
             </State>
@@ -189,8 +189,8 @@
                 <TriggerLabel>Status changes</TriggerLabel>
                 <ControlPageLabel>Status</ControlPageLabel>
             </State>
-            <State id="batteryLevel">
-                <ValueType>Number</ValueType>
+            <State id="battery">
+                <ValueType>Integer</ValueType>
                 <TriggerLabel>Battery level changes</TriggerLabel>
                 <ControlPageLabel>Battery %</ControlPageLabel>
             </State>
@@ -258,8 +258,8 @@
                 <TriggerLabel>Status changes</TriggerLabel>
                 <ControlPageLabel>Status</ControlPageLabel>
             </State>
-            <State id="batteryLevel">
-                <ValueType>Number</ValueType>
+            <State id="battery">
+                <ValueType>Integer</ValueType>
                 <TriggerLabel>Battery level changes</TriggerLabel>
                 <ControlPageLabel>Battery %</ControlPageLabel>
             </State>
@@ -327,8 +327,8 @@
                 <TriggerLabel>Status changes</TriggerLabel>
                 <ControlPageLabel>Status</ControlPageLabel>
             </State>
-            <State id="batteryLevel">
-                <ValueType>Number</ValueType>
+            <State id="battery">
+                <ValueType>Integer</ValueType>
                 <TriggerLabel>Battery level changes</TriggerLabel>
                 <ControlPageLabel>Battery %</ControlPageLabel>
             </State>
@@ -411,8 +411,8 @@
                 <TriggerLabel>Status changes</TriggerLabel>
                 <ControlPageLabel>Status</ControlPageLabel>
             </State>
-            <State id="batteryLevel">
-                <ValueType>Number</ValueType>
+            <State id="battery">
+                <ValueType>Integer</ValueType>
                 <TriggerLabel>Battery level changes</TriggerLabel>
                 <ControlPageLabel>Battery %</ControlPageLabel>
             </State>
@@ -465,8 +465,8 @@
             <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
         </ConfigUI>
         <States>
-            <State id="batteryLevel">
-                <ValueType>Number</ValueType>
+            <State id="battery">
+                <ValueType>Integer</ValueType>
                 <TriggerLabel>Battery level changes</TriggerLabel>
                 <ControlPageLabel>Battery %</ControlPageLabel>
             </State>
@@ -564,8 +564,8 @@
                 <TriggerLabel>Status changes</TriggerLabel>
                 <ControlPageLabel>Status</ControlPageLabel>
             </State>
-            <State id="batteryLevel">
-                <ValueType>Number</ValueType>
+            <State id="battery">
+                <ValueType>Integer</ValueType>
                 <TriggerLabel>Battery level changes</TriggerLabel>
                 <ControlPageLabel>Battery %</ControlPageLabel>
             </State>
@@ -643,8 +643,8 @@
                 <TriggerLabel>Status changes</TriggerLabel>
                 <ControlPageLabel>Status</ControlPageLabel>
             </State>
-            <State id="batteryLevel">
-                <ValueType>Number</ValueType>
+            <State id="battery">
+                <ValueType>Integer</ValueType>
                 <TriggerLabel>Battery level changes</TriggerLabel>
                 <ControlPageLabel>Battery %</ControlPageLabel>
             </State>
@@ -788,8 +788,8 @@
                 <TriggerLabel>Status changes</TriggerLabel>
                 <ControlPageLabel>Status</ControlPageLabel>
             </State>
-            <State id="batteryLevel">
-                <ValueType>Number</ValueType>
+            <State id="battery">
+                <ValueType>Integer</ValueType>
                 <TriggerLabel>Battery level changes</TriggerLabel>
                 <ControlPageLabel>Battery %</ControlPageLabel>
             </State>
@@ -893,7 +893,7 @@
             <State id="lastScene"><ValueType>Number</ValueType><TriggerLabel>Scene changes</TriggerLabel><ControlPageLabel>Last Scene</ControlPageLabel></State>
             <State id="lastSceneAction"><ValueType>String</ValueType><TriggerLabel>Scene action changes</TriggerLabel><ControlPageLabel>Last Action</ControlPageLabel></State>
             <State id="sceneTimestamp"><ValueType>String</ValueType><TriggerLabel>Scene timestamp changes</TriggerLabel><ControlPageLabel>Scene Time</ControlPageLabel></State>
-            <State id="batteryLevel"><ValueType>Number</ValueType><TriggerLabel>Battery level changes</TriggerLabel><ControlPageLabel>Battery %</ControlPageLabel></State>
+            <State id="battery"><ValueType>Integer</ValueType><TriggerLabel>Battery level changes</TriggerLabel><ControlPageLabel>Battery %</ControlPageLabel></State>
             <State id="batteryLow"><ValueType>Boolean</ValueType><TriggerLabel>Battery low state changes</TriggerLabel><ControlPageLabel>Battery Low</ControlPageLabel></State>
             <State id="lastUpdate"><ValueType>String</ValueType><TriggerLabel>Last update time changes</TriggerLabel><ControlPageLabel>Last Updated</ControlPageLabel></State>
             <State id="deviceOnline"><ValueType>Boolean</ValueType><TriggerLabel>Device online state changes</TriggerLabel><ControlPageLabel>Online</ControlPageLabel></State>
