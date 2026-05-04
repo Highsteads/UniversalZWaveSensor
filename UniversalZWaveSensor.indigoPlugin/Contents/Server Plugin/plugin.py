@@ -7,7 +7,7 @@
 #              natively. Uses subscribeToIncoming() to receive ALL Z-Wave bytes.
 # Author:      CliveS & Claude Sonnet 4.6
 # Date:        04-05-2026
-# Version:     5.1
+# Version:     5.2
 
 import indigo
 import os as _os
@@ -228,6 +228,9 @@ class Plugin(indigo.PluginBase):
         self.node_to_device:   dict[int, list[int]] = {}
         # Set of device IDs currently flagged as stale (avoids repeated log warnings)
         self.stale_device_ids: set[int] = set()
+        # Re-entry guard: stateListOrDisplayStateIdChanged() can cause Indigo to call
+        # deviceStartComm again before the first call returns — this prevents that loop
+        self._devices_starting: set[int] = set()
 
         # Banner logged here in __init__ using raw constructor params — the only reliable
         # point; PluginBase overwrites self.pluginVersion/pluginDisplayName by startup()
@@ -370,20 +373,26 @@ class Plugin(indigo.PluginBase):
         # generic: leave displayStatus as-is (onOffState drives it at runtime)
 
     def deviceStartComm(self, device):
-        self.logger.info(f"Starting: '{device.name}'")
-        device.stateListOrDisplayStateIdChanged()
-        self._init_display_status(device)
-        node_id = self._get_node_id(device)
-        if node_id:
-            if node_id not in self.node_to_device:
-                self.node_to_device[node_id] = []
-            if device.id not in self.node_to_device[node_id]:
-                self.node_to_device[node_id].append(device.id)
-            self.logger.info(f"  Now listening on Z-Wave Node {node_id}")
-        else:
-            self.logger.error(
-                f"  No valid Node ID configured for '{device.name}' — edit device and set it"
-            )
+        if device.id in self._devices_starting:
+            return
+        self._devices_starting.add(device.id)
+        try:
+            self.logger.info(f"Starting: '{device.name}'")
+            device.stateListOrDisplayStateIdChanged()
+            self._init_display_status(device)
+            node_id = self._get_node_id(device)
+            if node_id:
+                if node_id not in self.node_to_device:
+                    self.node_to_device[node_id] = []
+                if device.id not in self.node_to_device[node_id]:
+                    self.node_to_device[node_id].append(device.id)
+                self.logger.info(f"  Now listening on Z-Wave Node {node_id}")
+            else:
+                self.logger.error(
+                    f"  No valid Node ID configured for '{device.name}' — edit device and set it"
+                )
+        finally:
+            self._devices_starting.discard(device.id)
 
     def deviceStopComm(self, device):
         node_id = self._get_node_id(device)
