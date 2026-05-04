@@ -1,231 +1,51 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Devices>
-    <Device type="custom" id="zwaveSensor">
-        <Name>Universal Z-Wave Sensor</Name>
+
+    <!-- ============================================================
+         Shared ConfigUI fields — replicated in each device type.
+         (Indigo requires fields defined inline per-type; no inheritance.)
+         ============================================================ -->
+
+    <!-- ============================================================
+         MOTION SENSOR
+         States: motion, tamper + universal
+         ============================================================ -->
+    <Device type="custom" id="zwaveSensorMotion">
+        <Name>Motion Sensor</Name>
         <ConfigUI>
             <Field id="sourceDeviceId" type="menu" defaultValue="none">
                 <Label>Native Indigo Z-Wave Device</Label>
-                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically. For a multi-sensor, create one plugin device per sensor type and select the same native device for each.</Description>
+                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Description>
                 <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
-            </Field>
-            <Field id="sensorType" type="menu" defaultValue="motion">
-                <Label>Sensor Type</Label>
-                <Description>Sets the icon and primary display value shown in the device list</Description>
-                <List>
-                    <Option value="motion">Motion Sensor</Option>
-                    <Option value="contact">Contact Sensor (door/window)</Option>
-                    <Option value="temperature">Temperature Sensor</Option>
-                    <Option value="humidity">Humidity Sensor</Option>
-                    <Option value="luminance">Luminance Sensor</Option>
-                    <Option value="energy">Energy Monitor (watts)</Option>
-                    <Option value="battery">Battery Sensor</Option>
-                    <Option value="lock">Lock (door lock)</Option>
-                    <Option value="scene">Scene Controller (button/remote)</Option>
-                    <Option value="generic">Generic (on/off)</Option>
-                </List>
             </Field>
             <Field id="endpointId" type="textfield" defaultValue="">
                 <Label>Endpoint ID</Label>
-                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...) this device should listen on. Leave blank or 0 to accept all endpoints.</Description>
+                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Description>
             </Field>
-            <Field id="nodeId" type="textfield" hidden="true">
-                <Label>Node ID</Label>
-            </Field>
-            <Field id="address" type="textfield" hidden="true">
-                <Label>Address</Label>
-            </Field>
+            <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
+            <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
         </ConfigUI>
         <States>
-            <!-- Environmental sensors (SENSOR_MULTILEVEL 0x31) -->
-            <State id="temperature">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>Temperature changes</TriggerLabel>
-                <ControlPageLabel>Temperature</ControlPageLabel>
-            </State>
-            <State id="humidity">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>Humidity changes</TriggerLabel>
-                <ControlPageLabel>Humidity %</ControlPageLabel>
-            </State>
-            <State id="luminance">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>Luminance changes</TriggerLabel>
-                <ControlPageLabel>Luminance (lux)</ControlPageLabel>
-            </State>
-            <State id="pressure">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>Pressure changes</TriggerLabel>
-                <ControlPageLabel>Pressure (kPa)</ControlPageLabel>
-            </State>
-            <State id="velocity">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>Velocity changes</TriggerLabel>
-                <ControlPageLabel>Velocity (m/s)</ControlPageLabel>
-            </State>
-            <State id="co2Level">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>CO2 level changes</TriggerLabel>
-                <ControlPageLabel>CO2 (ppm)</ControlPageLabel>
-            </State>
-            <State id="uvIndex">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>UV index changes</TriggerLabel>
-                <ControlPageLabel>UV Index</ControlPageLabel>
-            </State>
-            <State id="airFlow">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>Air flow changes</TriggerLabel>
-                <ControlPageLabel>Air Flow (m3/h)</ControlPageLabel>
-            </State>
-            <State id="voc">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>VOC level changes</TriggerLabel>
-                <ControlPageLabel>VOC (ppm)</ControlPageLabel>
-            </State>
-            <State id="noise">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>Noise level changes</TriggerLabel>
-                <ControlPageLabel>Noise (dB)</ControlPageLabel>
-            </State>
-            <State id="soilMoisture">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>Soil moisture changes</TriggerLabel>
-                <ControlPageLabel>Soil Moisture %</ControlPageLabel>
-            </State>
-
-            <!-- Primary display state — String so Indigo renders it in device list -->
-            <State id="displayStatus">
-                <ValueType>String</ValueType>
-                <TriggerLabel>Status changes</TriggerLabel>
-                <ControlPageLabel>Status</ControlPageLabel>
-            </State>
-
-            <!-- Binary sensors (SENSOR_BINARY 0x30 / NOTIFICATION 0x71) -->
-            <State id="onOffState">
-                <ValueType>Boolean</ValueType>
-                <TriggerLabel>Primary state changes</TriggerLabel>
-                <ControlPageLabel>Active</ControlPageLabel>
-            </State>
             <State id="motion">
                 <ValueType>Boolean</ValueType>
                 <TriggerLabel>Motion detected or cleared</TriggerLabel>
                 <ControlPageLabel>Motion</ControlPageLabel>
-            </State>
-            <State id="contact">
-                <ValueType>Boolean</ValueType>
-                <TriggerLabel>Contact state changes</TriggerLabel>
-                <ControlPageLabel>Door/Window</ControlPageLabel>
-            </State>
-            <State id="waterLeak">
-                <ValueType>Boolean</ValueType>
-                <TriggerLabel>Water leak detected or cleared</TriggerLabel>
-                <ControlPageLabel>Water Leak</ControlPageLabel>
-            </State>
-            <State id="smoke">
-                <ValueType>Boolean</ValueType>
-                <TriggerLabel>Smoke alarm changes</TriggerLabel>
-                <ControlPageLabel>Smoke</ControlPageLabel>
-            </State>
-            <State id="coAlarm">
-                <ValueType>Boolean</ValueType>
-                <TriggerLabel>CO alarm changes</TriggerLabel>
-                <ControlPageLabel>CO Alarm</ControlPageLabel>
             </State>
             <State id="tamper">
                 <ValueType>Boolean</ValueType>
                 <TriggerLabel>Tamper state changes</TriggerLabel>
                 <ControlPageLabel>Tamper</ControlPageLabel>
             </State>
-
-            <!-- Switch/dimmer (SWITCH_BINARY 0x25 / SWITCH_MULTILEVEL 0x26) -->
-            <State id="switchState">
+            <State id="onOffState">
                 <ValueType>Boolean</ValueType>
-                <TriggerLabel>Switch state changes</TriggerLabel>
-                <ControlPageLabel>Switch</ControlPageLabel>
+                <TriggerLabel>Primary state changes</TriggerLabel>
+                <ControlPageLabel>Active</ControlPageLabel>
             </State>
-            <State id="dimLevel">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>Dim level changes</TriggerLabel>
-                <ControlPageLabel>Dim Level %</ControlPageLabel>
-            </State>
-
-            <!-- Power / energy meter (METER 0x32) -->
-            <State id="watts">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>Power changes</TriggerLabel>
-                <ControlPageLabel>Power (W)</ControlPageLabel>
-            </State>
-            <State id="kwh">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>Energy changes</TriggerLabel>
-                <ControlPageLabel>Energy (kWh)</ControlPageLabel>
-            </State>
-            <State id="voltage">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>Voltage changes</TriggerLabel>
-                <ControlPageLabel>Voltage (V)</ControlPageLabel>
-            </State>
-            <State id="current">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>Current changes</TriggerLabel>
-                <ControlPageLabel>Current (A)</ControlPageLabel>
-            </State>
-            <State id="gasCubicMeters">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>Gas consumption changes</TriggerLabel>
-                <ControlPageLabel>Gas (m3)</ControlPageLabel>
-            </State>
-            <State id="waterCubicMeters">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>Water consumption changes</TriggerLabel>
-                <ControlPageLabel>Water (m3)</ControlPageLabel>
-            </State>
-
-            <!-- Door lock (CC 0x62 / NOTIFICATION ACCESS_CONTROL lock ops) -->
-            <State id="lockState">
-                <ValueType>Boolean</ValueType>
-                <TriggerLabel>Lock state changes</TriggerLabel>
-                <ControlPageLabel>Locked</ControlPageLabel>
-            </State>
-            <State id="lockMode">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>Lock mode changes</TriggerLabel>
-                <ControlPageLabel>Lock Mode</ControlPageLabel>
-            </State>
-            <State id="boltState">
-                <ValueType>Boolean</ValueType>
-                <TriggerLabel>Bolt state changes</TriggerLabel>
-                <ControlPageLabel>Bolt Locked</ControlPageLabel>
-            </State>
-            <State id="latchState">
-                <ValueType>Boolean</ValueType>
-                <TriggerLabel>Latch state changes</TriggerLabel>
-                <ControlPageLabel>Latch Closed</ControlPageLabel>
-            </State>
-            <State id="lastUser">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>Last user changes</TriggerLabel>
-                <ControlPageLabel>Last User</ControlPageLabel>
-            </State>
-
-            <!-- Scene controller (CENTRAL_SCENE 0x5B) -->
-            <State id="lastScene">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>Scene changes</TriggerLabel>
-                <ControlPageLabel>Last Scene</ControlPageLabel>
-            </State>
-            <State id="lastSceneAction">
+            <State id="displayStatus">
                 <ValueType>String</ValueType>
-                <TriggerLabel>Scene action changes</TriggerLabel>
-                <ControlPageLabel>Last Action</ControlPageLabel>
+                <TriggerLabel>Status changes</TriggerLabel>
+                <ControlPageLabel>Status</ControlPageLabel>
             </State>
-            <State id="sceneTimestamp">
-                <ValueType>String</ValueType>
-                <TriggerLabel>Scene timestamp changes</TriggerLabel>
-                <ControlPageLabel>Scene Time</ControlPageLabel>
-            </State>
-
-            <!-- Universal -->
             <State id="batteryLevel">
                 <ValueType>Number</ValueType>
                 <TriggerLabel>Battery level changes</TriggerLabel>
@@ -259,4 +79,828 @@
         </States>
         <UiDisplayStateId>displayStatus</UiDisplayStateId>
     </Device>
+
+    <!-- ============================================================
+         CONTACT SENSOR (door / window)
+         States: contact, tamper + universal
+         ============================================================ -->
+    <Device type="custom" id="zwaveSensorContact">
+        <Name>Contact Sensor</Name>
+        <ConfigUI>
+            <Field id="sourceDeviceId" type="menu" defaultValue="none">
+                <Label>Native Indigo Z-Wave Device</Label>
+                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Description>
+                <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="endpointId" type="textfield" defaultValue="">
+                <Label>Endpoint ID</Label>
+                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
+            <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
+        </ConfigUI>
+        <States>
+            <State id="contact">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Contact state changes</TriggerLabel>
+                <ControlPageLabel>Door/Window</ControlPageLabel>
+            </State>
+            <State id="tamper">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Tamper state changes</TriggerLabel>
+                <ControlPageLabel>Tamper</ControlPageLabel>
+            </State>
+            <State id="onOffState">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Primary state changes</TriggerLabel>
+                <ControlPageLabel>Active</ControlPageLabel>
+            </State>
+            <State id="displayStatus">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Status changes</TriggerLabel>
+                <ControlPageLabel>Status</ControlPageLabel>
+            </State>
+            <State id="batteryLevel">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Battery level changes</TriggerLabel>
+                <ControlPageLabel>Battery %</ControlPageLabel>
+            </State>
+            <State id="batteryLow">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Battery low state changes</TriggerLabel>
+                <ControlPageLabel>Battery Low</ControlPageLabel>
+            </State>
+            <State id="lastUpdate">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last update time changes</TriggerLabel>
+                <ControlPageLabel>Last Updated</ControlPageLabel>
+            </State>
+            <State id="deviceOnline">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Device online state changes</TriggerLabel>
+                <ControlPageLabel>Online</ControlPageLabel>
+            </State>
+            <State id="wakeUpInterval">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Wake-up interval changes</TriggerLabel>
+                <ControlPageLabel>Wake-up Interval</ControlPageLabel>
+            </State>
+            <State id="rawLastReport">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last raw report changes</TriggerLabel>
+                <ControlPageLabel>Last Raw Report</ControlPageLabel>
+            </State>
+        </States>
+        <UiDisplayStateId>displayStatus</UiDisplayStateId>
+    </Device>
+
+    <!-- ============================================================
+         TEMPERATURE SENSOR
+         States: temperature + universal
+         ============================================================ -->
+    <Device type="custom" id="zwaveSensorTemperature">
+        <Name>Temperature Sensor</Name>
+        <ConfigUI>
+            <Field id="sourceDeviceId" type="menu" defaultValue="none">
+                <Label>Native Indigo Z-Wave Device</Label>
+                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Description>
+                <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="endpointId" type="textfield" defaultValue="">
+                <Label>Endpoint ID</Label>
+                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
+            <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
+        </ConfigUI>
+        <States>
+            <State id="temperature">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Temperature changes</TriggerLabel>
+                <ControlPageLabel>Temperature</ControlPageLabel>
+            </State>
+            <State id="onOffState">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Primary state changes</TriggerLabel>
+                <ControlPageLabel>Active</ControlPageLabel>
+            </State>
+            <State id="displayStatus">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Status changes</TriggerLabel>
+                <ControlPageLabel>Status</ControlPageLabel>
+            </State>
+            <State id="batteryLevel">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Battery level changes</TriggerLabel>
+                <ControlPageLabel>Battery %</ControlPageLabel>
+            </State>
+            <State id="batteryLow">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Battery low state changes</TriggerLabel>
+                <ControlPageLabel>Battery Low</ControlPageLabel>
+            </State>
+            <State id="lastUpdate">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last update time changes</TriggerLabel>
+                <ControlPageLabel>Last Updated</ControlPageLabel>
+            </State>
+            <State id="deviceOnline">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Device online state changes</TriggerLabel>
+                <ControlPageLabel>Online</ControlPageLabel>
+            </State>
+            <State id="wakeUpInterval">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Wake-up interval changes</TriggerLabel>
+                <ControlPageLabel>Wake-up Interval</ControlPageLabel>
+            </State>
+            <State id="rawLastReport">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last raw report changes</TriggerLabel>
+                <ControlPageLabel>Last Raw Report</ControlPageLabel>
+            </State>
+        </States>
+        <UiDisplayStateId>displayStatus</UiDisplayStateId>
+    </Device>
+
+    <!-- ============================================================
+         HUMIDITY SENSOR
+         States: humidity + universal
+         ============================================================ -->
+    <Device type="custom" id="zwaveSensorHumidity">
+        <Name>Humidity Sensor</Name>
+        <ConfigUI>
+            <Field id="sourceDeviceId" type="menu" defaultValue="none">
+                <Label>Native Indigo Z-Wave Device</Label>
+                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Description>
+                <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="endpointId" type="textfield" defaultValue="">
+                <Label>Endpoint ID</Label>
+                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
+            <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
+        </ConfigUI>
+        <States>
+            <State id="humidity">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Humidity changes</TriggerLabel>
+                <ControlPageLabel>Humidity %</ControlPageLabel>
+            </State>
+            <State id="onOffState">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Primary state changes</TriggerLabel>
+                <ControlPageLabel>Active</ControlPageLabel>
+            </State>
+            <State id="displayStatus">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Status changes</TriggerLabel>
+                <ControlPageLabel>Status</ControlPageLabel>
+            </State>
+            <State id="batteryLevel">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Battery level changes</TriggerLabel>
+                <ControlPageLabel>Battery %</ControlPageLabel>
+            </State>
+            <State id="batteryLow">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Battery low state changes</TriggerLabel>
+                <ControlPageLabel>Battery Low</ControlPageLabel>
+            </State>
+            <State id="lastUpdate">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last update time changes</TriggerLabel>
+                <ControlPageLabel>Last Updated</ControlPageLabel>
+            </State>
+            <State id="deviceOnline">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Device online state changes</TriggerLabel>
+                <ControlPageLabel>Online</ControlPageLabel>
+            </State>
+            <State id="wakeUpInterval">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Wake-up interval changes</TriggerLabel>
+                <ControlPageLabel>Wake-up Interval</ControlPageLabel>
+            </State>
+            <State id="rawLastReport">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last raw report changes</TriggerLabel>
+                <ControlPageLabel>Last Raw Report</ControlPageLabel>
+            </State>
+        </States>
+        <UiDisplayStateId>displayStatus</UiDisplayStateId>
+    </Device>
+
+    <!-- ============================================================
+         LUMINANCE SENSOR
+         States: luminance + universal
+         ============================================================ -->
+    <Device type="custom" id="zwaveSensorLuminance">
+        <Name>Luminance Sensor</Name>
+        <ConfigUI>
+            <Field id="sourceDeviceId" type="menu" defaultValue="none">
+                <Label>Native Indigo Z-Wave Device</Label>
+                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Description>
+                <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="endpointId" type="textfield" defaultValue="">
+                <Label>Endpoint ID</Label>
+                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
+            <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
+        </ConfigUI>
+        <States>
+            <State id="luminance">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Luminance changes</TriggerLabel>
+                <ControlPageLabel>Luminance (lux)</ControlPageLabel>
+            </State>
+            <State id="onOffState">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Primary state changes</TriggerLabel>
+                <ControlPageLabel>Active</ControlPageLabel>
+            </State>
+            <State id="displayStatus">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Status changes</TriggerLabel>
+                <ControlPageLabel>Status</ControlPageLabel>
+            </State>
+            <State id="batteryLevel">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Battery level changes</TriggerLabel>
+                <ControlPageLabel>Battery %</ControlPageLabel>
+            </State>
+            <State id="batteryLow">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Battery low state changes</TriggerLabel>
+                <ControlPageLabel>Battery Low</ControlPageLabel>
+            </State>
+            <State id="lastUpdate">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last update time changes</TriggerLabel>
+                <ControlPageLabel>Last Updated</ControlPageLabel>
+            </State>
+            <State id="deviceOnline">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Device online state changes</TriggerLabel>
+                <ControlPageLabel>Online</ControlPageLabel>
+            </State>
+            <State id="wakeUpInterval">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Wake-up interval changes</TriggerLabel>
+                <ControlPageLabel>Wake-up Interval</ControlPageLabel>
+            </State>
+            <State id="rawLastReport">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last raw report changes</TriggerLabel>
+                <ControlPageLabel>Last Raw Report</ControlPageLabel>
+            </State>
+        </States>
+        <UiDisplayStateId>displayStatus</UiDisplayStateId>
+    </Device>
+
+    <!-- ============================================================
+         ENERGY MONITOR
+         States: watts, kwh, voltage, current + universal
+         ============================================================ -->
+    <Device type="custom" id="zwaveSensorEnergy">
+        <Name>Energy Monitor</Name>
+        <ConfigUI>
+            <Field id="sourceDeviceId" type="menu" defaultValue="none">
+                <Label>Native Indigo Z-Wave Device</Label>
+                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Description>
+                <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="endpointId" type="textfield" defaultValue="">
+                <Label>Endpoint ID</Label>
+                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
+            <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
+        </ConfigUI>
+        <States>
+            <State id="watts">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Power changes</TriggerLabel>
+                <ControlPageLabel>Power (W)</ControlPageLabel>
+            </State>
+            <State id="kwh">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Energy changes</TriggerLabel>
+                <ControlPageLabel>Energy (kWh)</ControlPageLabel>
+            </State>
+            <State id="voltage">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Voltage changes</TriggerLabel>
+                <ControlPageLabel>Voltage (V)</ControlPageLabel>
+            </State>
+            <State id="current">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Current changes</TriggerLabel>
+                <ControlPageLabel>Current (A)</ControlPageLabel>
+            </State>
+            <State id="onOffState">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Primary state changes</TriggerLabel>
+                <ControlPageLabel>Active</ControlPageLabel>
+            </State>
+            <State id="displayStatus">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Status changes</TriggerLabel>
+                <ControlPageLabel>Status</ControlPageLabel>
+            </State>
+            <State id="batteryLevel">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Battery level changes</TriggerLabel>
+                <ControlPageLabel>Battery %</ControlPageLabel>
+            </State>
+            <State id="batteryLow">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Battery low state changes</TriggerLabel>
+                <ControlPageLabel>Battery Low</ControlPageLabel>
+            </State>
+            <State id="lastUpdate">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last update time changes</TriggerLabel>
+                <ControlPageLabel>Last Updated</ControlPageLabel>
+            </State>
+            <State id="deviceOnline">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Device online state changes</TriggerLabel>
+                <ControlPageLabel>Online</ControlPageLabel>
+            </State>
+            <State id="wakeUpInterval">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Wake-up interval changes</TriggerLabel>
+                <ControlPageLabel>Wake-up Interval</ControlPageLabel>
+            </State>
+            <State id="rawLastReport">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last raw report changes</TriggerLabel>
+                <ControlPageLabel>Last Raw Report</ControlPageLabel>
+            </State>
+        </States>
+        <UiDisplayStateId>displayStatus</UiDisplayStateId>
+    </Device>
+
+    <!-- ============================================================
+         BATTERY SENSOR
+         States: universal only (batteryLevel + batteryLow are universal)
+         ============================================================ -->
+    <Device type="custom" id="zwaveSensorBattery">
+        <Name>Battery Sensor</Name>
+        <ConfigUI>
+            <Field id="sourceDeviceId" type="menu" defaultValue="none">
+                <Label>Native Indigo Z-Wave Device</Label>
+                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Description>
+                <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="endpointId" type="textfield" defaultValue="">
+                <Label>Endpoint ID</Label>
+                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
+            <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
+        </ConfigUI>
+        <States>
+            <State id="batteryLevel">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Battery level changes</TriggerLabel>
+                <ControlPageLabel>Battery %</ControlPageLabel>
+            </State>
+            <State id="batteryLow">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Battery low state changes</TriggerLabel>
+                <ControlPageLabel>Battery Low</ControlPageLabel>
+            </State>
+            <State id="onOffState">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Primary state changes</TriggerLabel>
+                <ControlPageLabel>Active</ControlPageLabel>
+            </State>
+            <State id="displayStatus">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Status changes</TriggerLabel>
+                <ControlPageLabel>Status</ControlPageLabel>
+            </State>
+            <State id="lastUpdate">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last update time changes</TriggerLabel>
+                <ControlPageLabel>Last Updated</ControlPageLabel>
+            </State>
+            <State id="deviceOnline">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Device online state changes</TriggerLabel>
+                <ControlPageLabel>Online</ControlPageLabel>
+            </State>
+            <State id="wakeUpInterval">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Wake-up interval changes</TriggerLabel>
+                <ControlPageLabel>Wake-up Interval</ControlPageLabel>
+            </State>
+            <State id="rawLastReport">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last raw report changes</TriggerLabel>
+                <ControlPageLabel>Last Raw Report</ControlPageLabel>
+            </State>
+        </States>
+        <UiDisplayStateId>displayStatus</UiDisplayStateId>
+    </Device>
+
+    <!-- ============================================================
+         LOCK (door lock)
+         States: lockState, lockMode, boltState, latchState, lastUser + universal
+         ============================================================ -->
+    <Device type="custom" id="zwaveSensorLock">
+        <Name>Lock</Name>
+        <ConfigUI>
+            <Field id="sourceDeviceId" type="menu" defaultValue="none">
+                <Label>Native Indigo Z-Wave Device</Label>
+                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Description>
+                <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="endpointId" type="textfield" defaultValue="">
+                <Label>Endpoint ID</Label>
+                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
+            <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
+        </ConfigUI>
+        <States>
+            <State id="lockState">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Lock state changes</TriggerLabel>
+                <ControlPageLabel>Locked</ControlPageLabel>
+            </State>
+            <State id="lockMode">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Lock mode changes</TriggerLabel>
+                <ControlPageLabel>Lock Mode</ControlPageLabel>
+            </State>
+            <State id="boltState">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Bolt state changes</TriggerLabel>
+                <ControlPageLabel>Bolt Locked</ControlPageLabel>
+            </State>
+            <State id="latchState">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Latch state changes</TriggerLabel>
+                <ControlPageLabel>Latch Closed</ControlPageLabel>
+            </State>
+            <State id="lastUser">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Last user changes</TriggerLabel>
+                <ControlPageLabel>Last User</ControlPageLabel>
+            </State>
+            <State id="onOffState">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Primary state changes</TriggerLabel>
+                <ControlPageLabel>Active</ControlPageLabel>
+            </State>
+            <State id="displayStatus">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Status changes</TriggerLabel>
+                <ControlPageLabel>Status</ControlPageLabel>
+            </State>
+            <State id="batteryLevel">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Battery level changes</TriggerLabel>
+                <ControlPageLabel>Battery %</ControlPageLabel>
+            </State>
+            <State id="batteryLow">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Battery low state changes</TriggerLabel>
+                <ControlPageLabel>Battery Low</ControlPageLabel>
+            </State>
+            <State id="lastUpdate">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last update time changes</TriggerLabel>
+                <ControlPageLabel>Last Updated</ControlPageLabel>
+            </State>
+            <State id="deviceOnline">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Device online state changes</TriggerLabel>
+                <ControlPageLabel>Online</ControlPageLabel>
+            </State>
+            <State id="wakeUpInterval">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Wake-up interval changes</TriggerLabel>
+                <ControlPageLabel>Wake-up Interval</ControlPageLabel>
+            </State>
+            <State id="rawLastReport">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last raw report changes</TriggerLabel>
+                <ControlPageLabel>Last Raw Report</ControlPageLabel>
+            </State>
+        </States>
+        <UiDisplayStateId>displayStatus</UiDisplayStateId>
+    </Device>
+
+    <!-- ============================================================
+         SCENE CONTROLLER (button / remote)
+         States: lastScene, lastSceneAction, sceneTimestamp + universal
+         ============================================================ -->
+    <Device type="custom" id="zwaveSensorScene">
+        <Name>Scene Controller</Name>
+        <ConfigUI>
+            <Field id="sourceDeviceId" type="menu" defaultValue="none">
+                <Label>Native Indigo Z-Wave Device</Label>
+                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Description>
+                <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="endpointId" type="textfield" defaultValue="">
+                <Label>Endpoint ID</Label>
+                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
+            <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
+        </ConfigUI>
+        <States>
+            <State id="lastScene">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Scene changes</TriggerLabel>
+                <ControlPageLabel>Last Scene</ControlPageLabel>
+            </State>
+            <State id="lastSceneAction">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Scene action changes</TriggerLabel>
+                <ControlPageLabel>Last Action</ControlPageLabel>
+            </State>
+            <State id="sceneTimestamp">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Scene timestamp changes</TriggerLabel>
+                <ControlPageLabel>Scene Time</ControlPageLabel>
+            </State>
+            <State id="onOffState">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Primary state changes</TriggerLabel>
+                <ControlPageLabel>Active</ControlPageLabel>
+            </State>
+            <State id="displayStatus">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Status changes</TriggerLabel>
+                <ControlPageLabel>Status</ControlPageLabel>
+            </State>
+            <State id="batteryLevel">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Battery level changes</TriggerLabel>
+                <ControlPageLabel>Battery %</ControlPageLabel>
+            </State>
+            <State id="batteryLow">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Battery low state changes</TriggerLabel>
+                <ControlPageLabel>Battery Low</ControlPageLabel>
+            </State>
+            <State id="lastUpdate">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last update time changes</TriggerLabel>
+                <ControlPageLabel>Last Updated</ControlPageLabel>
+            </State>
+            <State id="deviceOnline">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Device online state changes</TriggerLabel>
+                <ControlPageLabel>Online</ControlPageLabel>
+            </State>
+            <State id="wakeUpInterval">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Wake-up interval changes</TriggerLabel>
+                <ControlPageLabel>Wake-up Interval</ControlPageLabel>
+            </State>
+            <State id="rawLastReport">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last raw report changes</TriggerLabel>
+                <ControlPageLabel>Last Raw Report</ControlPageLabel>
+            </State>
+        </States>
+        <UiDisplayStateId>displayStatus</UiDisplayStateId>
+    </Device>
+
+    <!-- ============================================================
+         GENERIC (on/off, switch, dimmer, plus all secondary sensor
+         states: CO2, UV, pressure, noise, velocity, air flow, VOC,
+         soil moisture, gas, water, water leak, smoke, CO)
+         ============================================================ -->
+    <Device type="custom" id="zwaveSensorGeneric">
+        <Name>Generic Sensor</Name>
+        <ConfigUI>
+            <Field id="sourceDeviceId" type="menu" defaultValue="none">
+                <Label>Native Indigo Z-Wave Device</Label>
+                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Description>
+                <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="endpointId" type="textfield" defaultValue="">
+                <Label>Endpoint ID</Label>
+                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
+            <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
+        </ConfigUI>
+        <States>
+            <!-- Switch / relay -->
+            <State id="switchState">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Switch state changes</TriggerLabel>
+                <ControlPageLabel>Switch</ControlPageLabel>
+            </State>
+            <State id="dimLevel">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Dim level changes</TriggerLabel>
+                <ControlPageLabel>Dim Level %</ControlPageLabel>
+            </State>
+            <!-- Environmental sensors -->
+            <State id="co2Level">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>CO2 level changes</TriggerLabel>
+                <ControlPageLabel>CO2 (ppm)</ControlPageLabel>
+            </State>
+            <State id="uvIndex">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>UV index changes</TriggerLabel>
+                <ControlPageLabel>UV Index</ControlPageLabel>
+            </State>
+            <State id="pressure">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Pressure changes</TriggerLabel>
+                <ControlPageLabel>Pressure (kPa)</ControlPageLabel>
+            </State>
+            <State id="noise">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Noise level changes</TriggerLabel>
+                <ControlPageLabel>Noise (dB)</ControlPageLabel>
+            </State>
+            <State id="velocity">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Velocity changes</TriggerLabel>
+                <ControlPageLabel>Velocity (m/s)</ControlPageLabel>
+            </State>
+            <State id="airFlow">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Air flow changes</TriggerLabel>
+                <ControlPageLabel>Air Flow (m3/h)</ControlPageLabel>
+            </State>
+            <State id="voc">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>VOC level changes</TriggerLabel>
+                <ControlPageLabel>VOC (ppm)</ControlPageLabel>
+            </State>
+            <State id="soilMoisture">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Soil moisture changes</TriggerLabel>
+                <ControlPageLabel>Soil Moisture %</ControlPageLabel>
+            </State>
+            <!-- Meter -->
+            <State id="gasCubicMeters">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Gas consumption changes</TriggerLabel>
+                <ControlPageLabel>Gas (m3)</ControlPageLabel>
+            </State>
+            <State id="waterCubicMeters">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Water consumption changes</TriggerLabel>
+                <ControlPageLabel>Water (m3)</ControlPageLabel>
+            </State>
+            <!-- Safety alarms -->
+            <State id="waterLeak">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Water leak detected or cleared</TriggerLabel>
+                <ControlPageLabel>Water Leak</ControlPageLabel>
+            </State>
+            <State id="smoke">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Smoke alarm changes</TriggerLabel>
+                <ControlPageLabel>Smoke</ControlPageLabel>
+            </State>
+            <State id="coAlarm">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>CO alarm changes</TriggerLabel>
+                <ControlPageLabel>CO Alarm</ControlPageLabel>
+            </State>
+            <!-- Universal -->
+            <State id="onOffState">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Primary state changes</TriggerLabel>
+                <ControlPageLabel>Active</ControlPageLabel>
+            </State>
+            <State id="displayStatus">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Status changes</TriggerLabel>
+                <ControlPageLabel>Status</ControlPageLabel>
+            </State>
+            <State id="batteryLevel">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Battery level changes</TriggerLabel>
+                <ControlPageLabel>Battery %</ControlPageLabel>
+            </State>
+            <State id="batteryLow">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Battery low state changes</TriggerLabel>
+                <ControlPageLabel>Battery Low</ControlPageLabel>
+            </State>
+            <State id="lastUpdate">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last update time changes</TriggerLabel>
+                <ControlPageLabel>Last Updated</ControlPageLabel>
+            </State>
+            <State id="deviceOnline">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Device online state changes</TriggerLabel>
+                <ControlPageLabel>Online</ControlPageLabel>
+            </State>
+            <State id="wakeUpInterval">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Wake-up interval changes</TriggerLabel>
+                <ControlPageLabel>Wake-up Interval</ControlPageLabel>
+            </State>
+            <State id="rawLastReport">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Last raw report changes</TriggerLabel>
+                <ControlPageLabel>Last Raw Report</ControlPageLabel>
+            </State>
+        </States>
+        <UiDisplayStateId>displayStatus</UiDisplayStateId>
+    </Device>
+
+    <!-- ============================================================
+         LEGACY — kept for devices created before v5.1.
+         New devices should use one of the typed entries above.
+         ============================================================ -->
+    <Device type="custom" id="zwaveSensor">
+        <Name>Universal Z-Wave Sensor (Legacy)</Name>
+        <ConfigUI>
+            <Field id="sourceDeviceId" type="menu" defaultValue="none">
+                <Label>Native Indigo Z-Wave Device</Label>
+                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically. For a multi-sensor, create one plugin device per sensor type and select the same native device for each.</Description>
+                <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="sensorType" type="menu" defaultValue="motion">
+                <Label>Sensor Type</Label>
+                <Description>Sets the icon and primary display value shown in the device list</Description>
+                <List>
+                    <Option value="motion">Motion Sensor</Option>
+                    <Option value="contact">Contact Sensor (door/window)</Option>
+                    <Option value="temperature">Temperature Sensor</Option>
+                    <Option value="humidity">Humidity Sensor</Option>
+                    <Option value="luminance">Luminance Sensor</Option>
+                    <Option value="energy">Energy Monitor (watts)</Option>
+                    <Option value="battery">Battery Sensor</Option>
+                    <Option value="lock">Lock (door lock)</Option>
+                    <Option value="scene">Scene Controller (button/remote)</Option>
+                    <Option value="generic">Generic (on/off)</Option>
+                </List>
+            </Field>
+            <Field id="endpointId" type="textfield" defaultValue="">
+                <Label>Endpoint ID</Label>
+                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...) this device should listen on. Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
+            <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
+        </ConfigUI>
+        <States>
+            <State id="temperature"><ValueType>Number</ValueType><TriggerLabel>Temperature changes</TriggerLabel><ControlPageLabel>Temperature</ControlPageLabel></State>
+            <State id="humidity"><ValueType>Number</ValueType><TriggerLabel>Humidity changes</TriggerLabel><ControlPageLabel>Humidity %</ControlPageLabel></State>
+            <State id="luminance"><ValueType>Number</ValueType><TriggerLabel>Luminance changes</TriggerLabel><ControlPageLabel>Luminance (lux)</ControlPageLabel></State>
+            <State id="pressure"><ValueType>Number</ValueType><TriggerLabel>Pressure changes</TriggerLabel><ControlPageLabel>Pressure (kPa)</ControlPageLabel></State>
+            <State id="velocity"><ValueType>Number</ValueType><TriggerLabel>Velocity changes</TriggerLabel><ControlPageLabel>Velocity (m/s)</ControlPageLabel></State>
+            <State id="co2Level"><ValueType>Number</ValueType><TriggerLabel>CO2 level changes</TriggerLabel><ControlPageLabel>CO2 (ppm)</ControlPageLabel></State>
+            <State id="uvIndex"><ValueType>Number</ValueType><TriggerLabel>UV index changes</TriggerLabel><ControlPageLabel>UV Index</ControlPageLabel></State>
+            <State id="airFlow"><ValueType>Number</ValueType><TriggerLabel>Air flow changes</TriggerLabel><ControlPageLabel>Air Flow (m3/h)</ControlPageLabel></State>
+            <State id="voc"><ValueType>Number</ValueType><TriggerLabel>VOC level changes</TriggerLabel><ControlPageLabel>VOC (ppm)</ControlPageLabel></State>
+            <State id="noise"><ValueType>Number</ValueType><TriggerLabel>Noise level changes</TriggerLabel><ControlPageLabel>Noise (dB)</ControlPageLabel></State>
+            <State id="soilMoisture"><ValueType>Number</ValueType><TriggerLabel>Soil moisture changes</TriggerLabel><ControlPageLabel>Soil Moisture %</ControlPageLabel></State>
+            <State id="displayStatus"><ValueType>String</ValueType><TriggerLabel>Status changes</TriggerLabel><ControlPageLabel>Status</ControlPageLabel></State>
+            <State id="onOffState"><ValueType>Boolean</ValueType><TriggerLabel>Primary state changes</TriggerLabel><ControlPageLabel>Active</ControlPageLabel></State>
+            <State id="motion"><ValueType>Boolean</ValueType><TriggerLabel>Motion detected or cleared</TriggerLabel><ControlPageLabel>Motion</ControlPageLabel></State>
+            <State id="contact"><ValueType>Boolean</ValueType><TriggerLabel>Contact state changes</TriggerLabel><ControlPageLabel>Door/Window</ControlPageLabel></State>
+            <State id="waterLeak"><ValueType>Boolean</ValueType><TriggerLabel>Water leak detected or cleared</TriggerLabel><ControlPageLabel>Water Leak</ControlPageLabel></State>
+            <State id="smoke"><ValueType>Boolean</ValueType><TriggerLabel>Smoke alarm changes</TriggerLabel><ControlPageLabel>Smoke</ControlPageLabel></State>
+            <State id="coAlarm"><ValueType>Boolean</ValueType><TriggerLabel>CO alarm changes</TriggerLabel><ControlPageLabel>CO Alarm</ControlPageLabel></State>
+            <State id="tamper"><ValueType>Boolean</ValueType><TriggerLabel>Tamper state changes</TriggerLabel><ControlPageLabel>Tamper</ControlPageLabel></State>
+            <State id="switchState"><ValueType>Boolean</ValueType><TriggerLabel>Switch state changes</TriggerLabel><ControlPageLabel>Switch</ControlPageLabel></State>
+            <State id="dimLevel"><ValueType>Number</ValueType><TriggerLabel>Dim level changes</TriggerLabel><ControlPageLabel>Dim Level %</ControlPageLabel></State>
+            <State id="watts"><ValueType>Number</ValueType><TriggerLabel>Power changes</TriggerLabel><ControlPageLabel>Power (W)</ControlPageLabel></State>
+            <State id="kwh"><ValueType>Number</ValueType><TriggerLabel>Energy changes</TriggerLabel><ControlPageLabel>Energy (kWh)</ControlPageLabel></State>
+            <State id="voltage"><ValueType>Number</ValueType><TriggerLabel>Voltage changes</TriggerLabel><ControlPageLabel>Voltage (V)</ControlPageLabel></State>
+            <State id="current"><ValueType>Number</ValueType><TriggerLabel>Current changes</TriggerLabel><ControlPageLabel>Current (A)</ControlPageLabel></State>
+            <State id="gasCubicMeters"><ValueType>Number</ValueType><TriggerLabel>Gas consumption changes</TriggerLabel><ControlPageLabel>Gas (m3)</ControlPageLabel></State>
+            <State id="waterCubicMeters"><ValueType>Number</ValueType><TriggerLabel>Water consumption changes</TriggerLabel><ControlPageLabel>Water (m3)</ControlPageLabel></State>
+            <State id="lockState"><ValueType>Boolean</ValueType><TriggerLabel>Lock state changes</TriggerLabel><ControlPageLabel>Locked</ControlPageLabel></State>
+            <State id="lockMode"><ValueType>Number</ValueType><TriggerLabel>Lock mode changes</TriggerLabel><ControlPageLabel>Lock Mode</ControlPageLabel></State>
+            <State id="boltState"><ValueType>Boolean</ValueType><TriggerLabel>Bolt state changes</TriggerLabel><ControlPageLabel>Bolt Locked</ControlPageLabel></State>
+            <State id="latchState"><ValueType>Boolean</ValueType><TriggerLabel>Latch state changes</TriggerLabel><ControlPageLabel>Latch Closed</ControlPageLabel></State>
+            <State id="lastUser"><ValueType>Number</ValueType><TriggerLabel>Last user changes</TriggerLabel><ControlPageLabel>Last User</ControlPageLabel></State>
+            <State id="lastScene"><ValueType>Number</ValueType><TriggerLabel>Scene changes</TriggerLabel><ControlPageLabel>Last Scene</ControlPageLabel></State>
+            <State id="lastSceneAction"><ValueType>String</ValueType><TriggerLabel>Scene action changes</TriggerLabel><ControlPageLabel>Last Action</ControlPageLabel></State>
+            <State id="sceneTimestamp"><ValueType>String</ValueType><TriggerLabel>Scene timestamp changes</TriggerLabel><ControlPageLabel>Scene Time</ControlPageLabel></State>
+            <State id="batteryLevel"><ValueType>Number</ValueType><TriggerLabel>Battery level changes</TriggerLabel><ControlPageLabel>Battery %</ControlPageLabel></State>
+            <State id="batteryLow"><ValueType>Boolean</ValueType><TriggerLabel>Battery low state changes</TriggerLabel><ControlPageLabel>Battery Low</ControlPageLabel></State>
+            <State id="lastUpdate"><ValueType>String</ValueType><TriggerLabel>Last update time changes</TriggerLabel><ControlPageLabel>Last Updated</ControlPageLabel></State>
+            <State id="deviceOnline"><ValueType>Boolean</ValueType><TriggerLabel>Device online state changes</TriggerLabel><ControlPageLabel>Online</ControlPageLabel></State>
+            <State id="wakeUpInterval"><ValueType>Number</ValueType><TriggerLabel>Wake-up interval changes</TriggerLabel><ControlPageLabel>Wake-up Interval</ControlPageLabel></State>
+            <State id="rawLastReport"><ValueType>String</ValueType><TriggerLabel>Last raw report changes</TriggerLabel><ControlPageLabel>Last Raw Report</ControlPageLabel></State>
+        </States>
+        <UiDisplayStateId>displayStatus</UiDisplayStateId>
+    </Device>
+
 </Devices>
