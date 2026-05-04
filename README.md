@@ -1,6 +1,6 @@
 # Universal Z-Wave Sensor — Indigo Plugin
 
-**Version 5.0** | Indigo 2025.1+ | Python 3.11+
+**Version 5.3** | Indigo 2025.2+ | Python 3.13+
 
 Creates companion plugin devices alongside your existing Indigo Z-Wave devices, exposing sensor values that Indigo does not capture natively — temperature, humidity, luminance, contact state, lock state, scene controller events, and more.
 
@@ -21,7 +21,7 @@ The plugin also provides a **Simulate Z-Wave Report** tool — useful for sendin
 - **Select from your existing Indigo devices** — dropdown lists all native Z-Wave devices; node ID is read automatically
 - **Multiple plugin devices per node** — one physical multi-sensor creates separate plugin devices per reading type (motion, temperature, luminance), each assigned the appropriate sensor type
 - **Multi-channel / endpoint support** — optional endpoint ID per device for multi-channel sensors (e.g. Aeotec 6-in-1)
-- **Ten sensor types** — motion, contact, temperature, humidity, luminance, energy monitor, battery, lock, scene controller, generic
+- **Eleven device types** — motion, contact, temperature, humidity, luminance, energy monitor, battery, lock, scene controller, plug/relay, generic
 - **Correct icons** — thermometer, light sensor, motion, power, lock, and generic sensor icons set automatically
 - **displayStatus** — device list shows meaningful values: `detected / clear`, `open / closed`, `21.5 degC`, `450 lux`, `locked / unlocked`, `S1 pressed`, etc.
 - **Temperature unit preference** — store and display all temperatures in degC or degF regardless of what the sensor reports; conversion applied automatically
@@ -46,12 +46,15 @@ The plugin also provides a **Simulate Z-Wave Report** tool — useful for sendin
 | Humidity | `humidity` (float, %) | `displayStatus` |
 | Luminance | `luminance` (float, lux) | `displayStatus` |
 | Energy | `watts` (float, W) | `kwh`, `voltage`, `current`, `displayStatus` |
-| Battery | `batteryLevel` (int, %) | `batteryLow`, `onOffState`, `displayStatus` |
+| Battery | `battery` (int, %) | `batteryLow`, `onOffState`, `displayStatus` |
+| Plug / Relay | `onOffState` (bool) | `switchState`, `watts`, `kwh`, `voltage`, `current`, `deviceOnline`, `displayStatus` |
 | Lock | `lockState` (bool) | `lockMode`, `boltState`, `latchState`, `lastUser`, `onOffState`, `displayStatus` |
 | Scene Controller | `lastScene` (int) | `lastSceneAction`, `sceneTimestamp`, `onOffState`, `displayStatus` |
 | Generic | `onOffState` (bool) | `switchState`, `dimLevel`, `displayStatus` |
 
-All device types also carry: `batteryLevel`, `batteryLow`, `waterLeak`, `smoke`, `coAlarm`, `co2Level`, `uvIndex`, `pressure`, `noise`, `velocity`, `airFlow`, `voc`, `soilMoisture`, `gasCubicMeters`, `waterCubicMeters`, `lastUpdate`, `deviceOnline`, `wakeUpInterval`, `rawLastReport`
+All sensor device types also carry: `battery`, `batteryLow`, `waterLeak`, `smoke`, `coAlarm`, `co2Level`, `uvIndex`, `pressure`, `noise`, `velocity`, `airFlow`, `voc`, `soilMoisture`, `gasCubicMeters`, `waterCubicMeters`, `lastUpdate`, `deviceOnline`, `wakeUpInterval`, `rawLastReport`
+
+Plug/Relay devices carry only: `switchState`, `watts`, `kwh`, `voltage`, `current`, `lastUpdate`, `deviceOnline`, `rawLastReport` (no battery or wake-up states — mains-powered)
 
 ---
 
@@ -202,6 +205,9 @@ No Indigo installation required — `indigo` is fully mocked. All tests should p
 
 | Version | Date | Changes |
 |---|---|---|
+| 5.3 | 04-May-2026 | Removed battery/batteryLow/wakeUpInterval states from Plug/Relay device type (mains-powered, irrelevant) |
+| 5.2 | 04-May-2026 | Plug/Relay device type (zwaveSensorPlug) — on/off control via actionControlDevice, energy monitoring (W/kWh/V/A), state sync at startup from native device; fix batteryLevel→battery (batteryLevel is a reserved Indigo native property — custom state silently dropped; use battery/Integer instead); Z-Wave protocol filter on native device picker; deviceStartComm re-entry guard (_devices_starting set) fixes maximum recursion depth error when stateListOrDisplayStateIdChanged() re-triggers startup |
+| 5.1 | 04-May-2026 | Per-type state lists in Devices.xml — states now declared per device type rather than shared; battery state forced visible via _ensure_states_visible() on startup |
 | 5.0 | 03-May-2026 | DOOR_LOCK (CC 0x62) — lock mode, bolt/latch state (v2 door condition bitmask), last user; CENTRAL_SCENE (CC 0x5B) — scene number, key action (pressed/released/held/repeated), timestamp; NOTIFICATION ACCESS_CONTROL extended — manual/RF/keypad/auto lock and unlock ops with user ID extraction; NOTIFICATION HOME_SECURITY extended — intrusion (0x01/0x02) and glass break (0x05/0x06); METER gas (m3/ft3/ccf) and water (m3/ft3/gallons) meter types; SENSOR_MULTILEVEL extended — velocity, watts, voltage, current, air flow, VOC, soil moisture; Battery sensor type — dedicated sensorType with displayStatus and batteryLow flag; batteryLow state on all device types (True if ≤20% or 0xFF sentinel); 10 sensor types; 41 device states |
 | 4.0 | 22-Mar-2026 | METER_REPORT v3 voltage (V) and current (A) — Scale2 bit (byte 2 bit 7) now extracted and combined with 2-bit scale to form full 3-bit scale value |
 | 3.9 | 22-Mar-2026 | Startup banner in `__init__()` using raw constructor params; Info.plist standardised (PluginVersion key added — fixes blank version, IwsApiVersion, CFBundleURLTypes, GithubInfo) |
