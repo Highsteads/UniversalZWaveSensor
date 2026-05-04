@@ -7,7 +7,7 @@
 #              natively. Uses subscribeToIncoming() to receive ALL Z-Wave bytes.
 # Author:      CliveS & Claude Sonnet 4.6
 # Date:        04-05-2026
-# Version:     5.3
+# Version:     5.4
 
 import indigo
 import os as _os
@@ -1501,6 +1501,119 @@ class Plugin(indigo.PluginBase):
     # -------------------------------------------------------------------------
     # Menu handlers
     # -------------------------------------------------------------------------
+
+    def get_support_device_list(self, filter="", values_dict=None, type_id="", target_id=0):
+        """ConfigUI callback — all plugin devices for the support report dialog."""
+        result = []
+        for dev in indigo.devices.iter("self"):
+            node_id = self._get_node_id(dev)
+            if node_id:
+                result.append((str(dev.id), f"{dev.name}  (Node {node_id})"))
+        return result if result else [("none", "-- No plugin devices configured --")]
+
+    def generateSupportReport(self, values_dict, type_id):
+        """
+        Menu: Generate Indigo Support Report
+        Dumps all available Z-Wave device info to the Indigo log in a format
+        ready to paste into an Indigo forum post for Matt and Jay to add native
+        device support. Covers: plugin device states, native device properties,
+        Z-Wave owner props (manufacturer ID, product type/ID, supported CCs),
+        and native device states.
+        """
+        try:
+            dev_id_str = str(values_dict.get("deviceId", "")).strip()
+            if not dev_id_str or dev_id_str == "none":
+                self.logger.error("Support Report: select a plugin device first")
+                return values_dict
+
+            try:
+                plugin_dev = indigo.devices[int(dev_id_str)]
+            except (KeyError, ValueError):
+                self.logger.error(f"Support Report: device id '{dev_id_str}' not found")
+                return values_dict
+
+            w   = 90
+            sep = "=" * w
+
+            lines = [
+                sep,
+                "  Z-Wave Device Support Report".center(w),
+                "  Paste into the Indigo forum to request native device support".center(w),
+                sep,
+                f"  Generated:       {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                f"  Plugin Version:  {self.pluginVersion}",
+                f"  Indigo Version:  {indigo.server.version}",
+                "",
+                "--- Plugin Device ---",
+                f"  Name:            {plugin_dev.name}",
+                f"  Type ID:         {plugin_dev.deviceTypeId}",
+                f"  Sensor Type:     {self._sensor_type(plugin_dev)}",
+                f"  Node ID:         {self._get_node_id(plugin_dev)}",
+                f"  Endpoint:        {plugin_dev.pluginProps.get('endpointId', '').strip() or '(none)'}",
+                f"  Last Update:     {plugin_dev.states.get('lastUpdate', '(never)')}",
+                f"  Raw Last Report: {plugin_dev.states.get('rawLastReport', '(none)')}",
+                "",
+                "--- Plugin Device States ---",
+            ]
+            for k, v in sorted(plugin_dev.states.items()):
+                lines.append(f"  {k:<30} {v}")
+
+            lines += ["", "--- Native Z-Wave Device ---"]
+
+            source_id_str = plugin_dev.pluginProps.get("sourceDeviceId", "").strip()
+            if source_id_str and source_id_str.isdigit() and int(source_id_str) in indigo.devices:
+                src = indigo.devices[int(source_id_str)]
+                lines += [
+                    f"  Name:            {src.name}",
+                    f"  Indigo ID:       {src.id}",
+                    f"  Address/Node:    {getattr(src, 'address', '(unknown)')}",
+                    f"  Model:           {getattr(src, 'model', '(unknown)')}",
+                    f"  Sub-Model:       {getattr(src, 'subModel', '(unknown)')}",
+                    f"  Description:     {src.description or '(none)'}",
+                    f"  Protocol:        {src.protocol}",
+                    f"  Plugin ID:       {src.pluginId}",
+                    "",
+                    "--- Native Device Z-Wave Properties (ownerProps) ---",
+                    "  (contains: manufacturer ID, product type/ID, supported command classes)",
+                ]
+                try:
+                    for k, v in sorted(dict(src.ownerProps).items()):
+                        lines.append(f"  {k:<44} {v}")
+                except Exception as e:
+                    lines.append(f"  (could not read ownerProps: {e})")
+
+                lines += ["", "--- Native Device States ---"]
+                try:
+                    for k, v in sorted(src.states.items()):
+                        lines.append(f"  {k:<30} {v}")
+                except Exception as e:
+                    lines.append(f"  (could not read states: {e})")
+
+                lines += ["", "--- Native Device Global Props (all plugin props) ---"]
+                try:
+                    for plugin_id_key, props in src.globalProps.items():
+                        lines.append(f"  [{plugin_id_key}]")
+                        for k, v in sorted(dict(props).items()):
+                            lines.append(f"    {k:<42} {v}")
+                except Exception as e:
+                    lines.append(f"  (could not read globalProps: {e})")
+            else:
+                lines.append("  (no source device configured or device not found)")
+
+            lines += ["", sep]
+
+            for line in lines:
+                self.logger.info(line)
+
+            self.logger.info(
+                f"Support report generated for '{plugin_dev.name}' — "
+                f"scroll up in the Indigo log to see the full report"
+            )
+
+        except Exception as e:
+            self.logger.error(f"Support Report: unexpected error — {e}", exc_info=True)
+
+        return values_dict   # keeps dialog open
 
     def showPluginInfo(self, valuesDict=None, typeId=None):
         if log_startup_banner:

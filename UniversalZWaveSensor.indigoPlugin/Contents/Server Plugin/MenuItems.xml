@@ -19,4 +19,26 @@
             </Field>
         </ConfigUI>
     </MenuItem>
+
+    <MenuItem id="generateSupportReportDialog">
+        <Name>Generate Indigo Support Report...</Name>
+        <ConfigUI>
+            <Field id="deviceId" type="menu" defaultValue="">
+                <Label>Plugin Device</Label>
+                <Description>Select a plugin device — all Z-Wave properties will be written to the Indigo log, ready to paste into the Indigo forum for Matt and Jay</Description>
+                <List class="self" method="get_support_device_list" dynamicReload="false"/>
+            </Field>
+            <Field id="generateButton" type="button">
+                <Label> </Label>
+                <Title>Generate Report</Title>
+                <CallbackMethod>generateSupportReport</CallbackMethod>
+            </Field>
+        </ConfigUI>
+    </MenuItem>
+
+    <MenuItem id="sep1" isSeparator="true"/>
+    <MenuItem id="showPluginInfo">
+        <Name>Show Plugin Info</Name>
+        <CallbackMethod>showPluginInfo</CallbackMethod>
+    </MenuItem>
 </MenuItems>
