@@ -7,7 +7,7 @@
 #              natively. Uses subscribeToIncoming() to receive ALL Z-Wave bytes.
 # Author:      CliveS & Claude Sonnet 4.6
 # Date:        04-05-2026
-# Version:     5.2
+# Version:     5.3
 
 import indigo
 import os as _os
