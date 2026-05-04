@@ -867,16 +867,6 @@
                 <TriggerLabel>Current changes</TriggerLabel>
                 <ControlPageLabel>Current (A)</ControlPageLabel>
             </State>
-            <State id="battery">
-                <ValueType>Integer</ValueType>
-                <TriggerLabel>Battery level changes</TriggerLabel>
-                <ControlPageLabel>Battery %</ControlPageLabel>
-            </State>
-            <State id="batteryLow">
-                <ValueType>Boolean</ValueType>
-                <TriggerLabel>Battery low state changes</TriggerLabel>
-                <ControlPageLabel>Battery Low</ControlPageLabel>
-            </State>
             <State id="lastUpdate">
                 <ValueType>String</ValueType>
                 <TriggerLabel>Last update time changes</TriggerLabel>
@@ -886,11 +876,6 @@
                 <ValueType>Boolean</ValueType>
                 <TriggerLabel>Device online state changes</TriggerLabel>
                 <ControlPageLabel>Online</ControlPageLabel>
-            </State>
-            <State id="wakeUpInterval">
-                <ValueType>Number</ValueType>
-                <TriggerLabel>Wake-up interval changes</TriggerLabel>
-                <ControlPageLabel>Wake-up Interval</ControlPageLabel>
             </State>
             <State id="rawLastReport">
                 <ValueType>String</ValueType>
