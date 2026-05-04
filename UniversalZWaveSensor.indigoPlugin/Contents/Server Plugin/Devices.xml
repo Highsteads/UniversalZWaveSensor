@@ -826,7 +826,7 @@
          PLUG / RELAY WITH ENERGY MONITORING
          States: switchState, watts, kwh, voltage, current + universal
          ============================================================ -->
-    <Device type="custom" id="zwaveSensorPlug">
+    <Device type="relay" id="zwaveSensorPlug">
         <Name>Plug / Relay</Name>
         <ConfigUI>
             <Field id="sourceDeviceId" type="menu" defaultValue="none">

@@ -425,6 +425,36 @@ class Plugin(indigo.PluginBase):
                 del self.node_to_device[node_id]
             self.logger.info(f"Stopped listening on Node {node_id}")
 
+    def actionControlDevice(self, action, device):
+        """Handle on/off/toggle actions for Plug/Relay devices.
+        Delegates to the native Z-Wave source device so Indigo sends the real
+        Z-Wave command; the plug's SWITCH_BINARY_REPORT then updates our states."""
+        if self._sensor_type(device) != "plug":
+            self.logger.warning(f"actionControlDevice called on non-plug device '{device.name}'")
+            return
+
+        source_id_str = device.pluginProps.get("sourceDeviceId", "").strip()
+        if not source_id_str or not source_id_str.isdigit():
+            self.logger.error(f"'{device.name}': no source device configured — cannot control")
+            return
+        source_id = int(source_id_str)
+        if source_id not in indigo.devices:
+            self.logger.error(f"'{device.name}': source device {source_id} not found")
+            return
+
+        cmd = action.deviceAction
+        if cmd == indigo.kDeviceAction.TurnOn:
+            indigo.device.turnOn(source_id)
+        elif cmd == indigo.kDeviceAction.TurnOff:
+            indigo.device.turnOff(source_id)
+        elif cmd == indigo.kDeviceAction.Toggle:
+            if device.states.get("switchState"):
+                indigo.device.turnOff(source_id)
+            else:
+                indigo.device.turnOn(source_id)
+        else:
+            self.logger.debug(f"'{device.name}': unhandled action {cmd}")
+
     def validateDeviceConfigUi(self, values_dict, type_id, device_id):
         errors = indigo.Dict()
 
