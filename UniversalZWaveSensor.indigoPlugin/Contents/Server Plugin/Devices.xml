@@ -750,6 +750,21 @@
                 <TriggerLabel>Soil moisture changes</TriggerLabel>
                 <ControlPageLabel>Soil Moisture %</ControlPageLabel>
             </State>
+            <State id="pm25">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>PM2.5 level changes</TriggerLabel>
+                <ControlPageLabel>PM2.5 (ug/m3)</ControlPageLabel>
+            </State>
+            <State id="atmosphericPressure">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Atmospheric pressure changes</TriggerLabel>
+                <ControlPageLabel>Atmospheric Pressure</ControlPageLabel>
+            </State>
+            <State id="targetTemperature">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Target temperature changes</TriggerLabel>
+                <ControlPageLabel>Target Temperature</ControlPageLabel>
+            </State>
             <!-- Meter -->
             <State id="gasCubicMeters">
                 <ValueType>Number</ValueType>
@@ -776,6 +791,53 @@
                 <ValueType>Boolean</ValueType>
                 <TriggerLabel>CO alarm changes</TriggerLabel>
                 <ControlPageLabel>CO Alarm</ControlPageLabel>
+            </State>
+            <State id="heatAlarm">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Heat alarm changes</TriggerLabel>
+                <ControlPageLabel>Heat Alarm</ControlPageLabel>
+            </State>
+            <State id="gasLeak">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Gas leak detected or cleared</TriggerLabel>
+                <ControlPageLabel>Gas Leak</ControlPageLabel>
+            </State>
+            <State id="sirenActive">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Siren active state changes</TriggerLabel>
+                <ControlPageLabel>Siren Active</ControlPageLabel>
+            </State>
+            <State id="valveOpen">
+                <ValueType>Boolean</ValueType>
+                <TriggerLabel>Valve state changes</TriggerLabel>
+                <ControlPageLabel>Valve Open</ControlPageLabel>
+            </State>
+            <!-- Thermostat -->
+            <State id="thermostatMode">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Thermostat mode changes</TriggerLabel>
+                <ControlPageLabel>Thermostat Mode</ControlPageLabel>
+            </State>
+            <State id="thermostatOpState">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Thermostat operating state changes</TriggerLabel>
+                <ControlPageLabel>Operating State</ControlPageLabel>
+            </State>
+            <State id="thermostatSetpoint">
+                <ValueType>Number</ValueType>
+                <TriggerLabel>Thermostat setpoint changes</TriggerLabel>
+                <ControlPageLabel>Setpoint</ControlPageLabel>
+            </State>
+            <State id="thermostatSetpointType">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Setpoint type changes</TriggerLabel>
+                <ControlPageLabel>Setpoint Type</ControlPageLabel>
+            </State>
+            <!-- Diagnostics -->
+            <State id="firmwareVersion">
+                <ValueType>String</ValueType>
+                <TriggerLabel>Firmware version changes</TriggerLabel>
+                <ControlPageLabel>Firmware Version</ControlPageLabel>
             </State>
             <!-- Universal -->
             <State id="onOffState">
@@ -932,6 +994,18 @@
             <State id="voc"><ValueType>Number</ValueType><TriggerLabel>VOC level changes</TriggerLabel><ControlPageLabel>VOC (ppm)</ControlPageLabel></State>
             <State id="noise"><ValueType>Number</ValueType><TriggerLabel>Noise level changes</TriggerLabel><ControlPageLabel>Noise (dB)</ControlPageLabel></State>
             <State id="soilMoisture"><ValueType>Number</ValueType><TriggerLabel>Soil moisture changes</TriggerLabel><ControlPageLabel>Soil Moisture %</ControlPageLabel></State>
+            <State id="pm25"><ValueType>Number</ValueType><TriggerLabel>PM2.5 level changes</TriggerLabel><ControlPageLabel>PM2.5 (ug/m3)</ControlPageLabel></State>
+            <State id="atmosphericPressure"><ValueType>Number</ValueType><TriggerLabel>Atmospheric pressure changes</TriggerLabel><ControlPageLabel>Atmospheric Pressure</ControlPageLabel></State>
+            <State id="targetTemperature"><ValueType>Number</ValueType><TriggerLabel>Target temperature changes</TriggerLabel><ControlPageLabel>Target Temperature</ControlPageLabel></State>
+            <State id="heatAlarm"><ValueType>Boolean</ValueType><TriggerLabel>Heat alarm changes</TriggerLabel><ControlPageLabel>Heat Alarm</ControlPageLabel></State>
+            <State id="gasLeak"><ValueType>Boolean</ValueType><TriggerLabel>Gas leak detected or cleared</TriggerLabel><ControlPageLabel>Gas Leak</ControlPageLabel></State>
+            <State id="sirenActive"><ValueType>Boolean</ValueType><TriggerLabel>Siren active state changes</TriggerLabel><ControlPageLabel>Siren Active</ControlPageLabel></State>
+            <State id="valveOpen"><ValueType>Boolean</ValueType><TriggerLabel>Valve state changes</TriggerLabel><ControlPageLabel>Valve Open</ControlPageLabel></State>
+            <State id="thermostatMode"><ValueType>String</ValueType><TriggerLabel>Thermostat mode changes</TriggerLabel><ControlPageLabel>Thermostat Mode</ControlPageLabel></State>
+            <State id="thermostatOpState"><ValueType>String</ValueType><TriggerLabel>Thermostat operating state changes</TriggerLabel><ControlPageLabel>Operating State</ControlPageLabel></State>
+            <State id="thermostatSetpoint"><ValueType>Number</ValueType><TriggerLabel>Thermostat setpoint changes</TriggerLabel><ControlPageLabel>Setpoint</ControlPageLabel></State>
+            <State id="thermostatSetpointType"><ValueType>String</ValueType><TriggerLabel>Setpoint type changes</TriggerLabel><ControlPageLabel>Setpoint Type</ControlPageLabel></State>
+            <State id="firmwareVersion"><ValueType>String</ValueType><TriggerLabel>Firmware version changes</TriggerLabel><ControlPageLabel>Firmware Version</ControlPageLabel></State>
             <State id="displayStatus"><ValueType>String</ValueType><TriggerLabel>Status changes</TriggerLabel><ControlPageLabel>Status</ControlPageLabel></State>
             <State id="onOffState"><ValueType>Boolean</ValueType><TriggerLabel>Primary state changes</TriggerLabel><ControlPageLabel>Active</ControlPageLabel></State>
             <State id="motion"><ValueType>Boolean</ValueType><TriggerLabel>Motion detected or cleared</TriggerLabel><ControlPageLabel>Motion</ControlPageLabel></State>

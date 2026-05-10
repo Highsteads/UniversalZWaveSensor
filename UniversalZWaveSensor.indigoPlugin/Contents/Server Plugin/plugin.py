@@ -6,8 +6,24 @@
 #              (temperature, humidity, contact, etc.) that Indigo does not expose
 #              natively. Uses subscribeToIncoming() to receive ALL Z-Wave bytes.
 # Author:      CliveS & Claude Sonnet 4.6
-# Date:        04-05-2026
-# Version:     5.5
+# Date:        10-05-2026
+# Version:     5.6
+#
+# v5.6 (10-05-2026):
+# - Added SENSOR_MULTILEVEL types: power (0x04), atmospheric pressure (0x09),
+#   target temperature (0x0E), PM2.5 (0x1F).
+# - Added NOTIFICATION types: HEAT (0x04), SYSTEM (0x09), APPLIANCE (0x0C),
+#   HOME_HEALTH (0x0D), SIREN (0x0E), WATER_VALVE (0x0F), WEATHER (0x10),
+#   GAS (0x12).
+# - Added CC handlers: HAIL (0x82), DEVICE_RESET_LOCALLY (0x5A),
+#   SCENE_ACTIVATION (0x2B), THERMOSTAT_MODE (0x40),
+#   THERMOSTAT_OPERATING_STATE (0x42), THERMOSTAT_SETPOINT (0x43),
+#   VERSION_REPORT (0x86 cmd 0x12).
+# - Generic device gains states: pm25, atmosphericPressure, gasLeak,
+#   valveOpen, sirenActive, heatAlarm, thermostatMode, thermostatOpState,
+#   thermostatSetpoint, targetTemperature, firmwareVersion.
+# - Removed dead _update_display() method.
+# - _handle_basic now mirrors switchState for relay/plug devices.
 
 import indigo
 import os as _os
@@ -30,23 +46,34 @@ except ImportError:
 CC_BASIC                = 0x20
 CC_SWITCH_BINARY        = 0x25
 CC_SWITCH_MULTILEVEL    = 0x26
+CC_SCENE_ACTIVATION     = 0x2B   # legacy scene reporter (paired with CENTRAL_SCENE on newer kit)
 CC_SENSOR_BINARY        = 0x30
 CC_SENSOR_MULTILEVEL    = 0x31
 CC_METER                = 0x32
+CC_THERMOSTAT_MODE      = 0x40
+CC_THERMOSTAT_OP_STATE  = 0x42
+CC_THERMOSTAT_SETPOINT  = 0x43
+CC_DEVICE_RESET_LOCAL   = 0x5A   # device performed a factory reset / removed from network
 CC_CENTRAL_SCENE        = 0x5B   # central scene notifications (buttons, remotes)
 CC_MULTI_CHANNEL        = 0x60   # multi-channel / endpoint encapsulation
 CC_DOOR_LOCK            = 0x62
 CC_NOTIFICATION         = 0x71   # replaces ALARM (0x9C) in v4+
 CC_BATTERY              = 0x80
+CC_HAIL                 = 0x82   # legacy "I have an update" hint
 CC_WAKE_UP              = 0x84
+CC_VERSION              = 0x86   # firmware/app version reports
 
 # Command function codes (second byte in report)
 CMD_BASIC_REPORT                = 0x03
 CMD_SWITCH_BINARY_REPORT        = 0x03
 CMD_SWITCH_MULTILEVEL_REPORT    = 0x03
+CMD_SCENE_ACTIVATION_SET        = 0x01
 CMD_SENSOR_BINARY_REPORT        = 0x03
 CMD_SENSOR_MULTILEVEL_REPORT    = 0x05
 CMD_METER_REPORT                = 0x02
+CMD_THERMOSTAT_MODE_REPORT      = 0x03
+CMD_THERMOSTAT_OP_STATE_REPORT  = 0x03
+CMD_THERMOSTAT_SETPOINT_REPORT  = 0x03
 CMD_NOTIFICATION_REPORT         = 0x05
 CMD_BATTERY_REPORT              = 0x03
 CMD_WAKE_UP_NOTIFICATION        = 0x07
@@ -54,26 +81,31 @@ CMD_WAKE_UP_INTERVAL_REPORT     = 0x06
 CMD_MULTI_CHANNEL_ENCAP         = 0x0D
 CMD_CENTRAL_SCENE_NOTIFICATION  = 0x03   # same opcode value as other *_REPORT commands
 CMD_DOOR_LOCK_REPORT            = 0x03   # same opcode value as other *_REPORT commands
+CMD_VERSION_REPORT              = 0x12   # CC 0x86, "what firmware are you running?"
 
 # ==============================================================================
 # SENSOR_MULTILEVEL (0x31) sensor type lookup
 # key  -> (state_id, default_unit)
 # ==============================================================================
 SENSOR_TYPES = {
-    0x01: ("temperature",  "degC"),
-    0x03: ("luminance",    "lux"),
-    0x05: ("humidity",     "%"),
-    0x08: ("pressure",     "kPa"),
-    0x0B: ("velocity",     "m/s"),
-    0x0F: ("co2Level",     "ppm"),
-    0x10: ("watts",        "W"),    # power (reuses energy meter state)
-    0x11: ("uvIndex",      ""),
-    0x12: ("voltage",      "V"),    # reuses meter voltage state
-    0x13: ("current",      "A"),    # reuses meter current state
-    0x15: ("airFlow",      "m3/h"),
-    0x19: ("voc",          "ppm"),
-    0x1B: ("noise",        "dB"),
-    0x1C: ("soilMoisture", "%"),
+    0x01: ("temperature",         "degC"),
+    0x03: ("luminance",           "lux"),
+    0x04: ("watts",               "W"),    # general power (alt to type 0x10)
+    0x05: ("humidity",            "%"),
+    0x08: ("pressure",            "kPa"),
+    0x09: ("atmosphericPressure", "kPa"),  # scale=1 -> inHg
+    0x0B: ("velocity",            "m/s"),
+    0x0E: ("targetTemperature",   "degC"), # thermostat-style target temp via multilevel
+    0x0F: ("co2Level",            "ppm"),
+    0x10: ("watts",               "W"),    # power (reuses energy meter state)
+    0x11: ("uvIndex",             ""),
+    0x12: ("voltage",             "V"),    # reuses meter voltage state
+    0x13: ("current",             "A"),    # reuses meter current state
+    0x15: ("airFlow",             "m3/h"),
+    0x19: ("voc",                 "ppm"),
+    0x1B: ("noise",               "dB"),
+    0x1C: ("soilMoisture",        "%"),
+    0x1F: ("pm25",                "ug/m3"),
 }
 
 # ==============================================================================
@@ -98,10 +130,36 @@ BINARY_SENSOR_TYPES = {
 # ==============================================================================
 NOTIF_SMOKE            = 0x01
 NOTIF_CO               = 0x02
+NOTIF_HEAT             = 0x04   # over-temperature, rapid temp rise, etc.
 NOTIF_WATER            = 0x05
 NOTIF_ACCESS_CONTROL   = 0x06
 NOTIF_HOME_SECURITY    = 0x07
 NOTIF_POWER_MANAGEMENT = 0x08
+NOTIF_SYSTEM           = 0x09   # hardware/software failure, watchdog reset
+NOTIF_APPLIANCE        = 0x0C   # fridge, washing machine, etc.
+NOTIF_HOME_HEALTH      = 0x0D   # leaving bed, fall detection, posture
+NOTIF_SIREN            = 0x0E   # active siren / silenced
+NOTIF_WATER_VALVE      = 0x0F   # valve open / closed / jammed
+NOTIF_WEATHER          = 0x10   # rain, frost, etc.
+NOTIF_GAS              = 0x12   # natural gas / fuel-gas detector
+
+# Friendly names for fall-through logging when a NOTIF type isn't fully decoded
+NOTIF_TYPE_NAMES = {
+    NOTIF_SMOKE:            "SMOKE",
+    NOTIF_CO:               "CO",
+    NOTIF_HEAT:             "HEAT",
+    NOTIF_WATER:            "WATER",
+    NOTIF_ACCESS_CONTROL:   "ACCESS_CONTROL",
+    NOTIF_HOME_SECURITY:    "HOME_SECURITY",
+    NOTIF_POWER_MANAGEMENT: "POWER_MANAGEMENT",
+    NOTIF_SYSTEM:           "SYSTEM",
+    NOTIF_APPLIANCE:        "APPLIANCE",
+    NOTIF_HOME_HEALTH:      "HOME_HEALTH",
+    NOTIF_SIREN:            "SIREN",
+    NOTIF_WATER_VALVE:      "WATER_VALVE",
+    NOTIF_WEATHER:          "WEATHER",
+    NOTIF_GAS:              "GAS",
+}
 
 # HOME_SECURITY events
 HS_IDLE                = 0x00   # No event / all clear
@@ -189,6 +247,27 @@ CENTRAL_SCENE_KEY_ACTIONS = {
     CS_KEY_PRESSED_3X: "triple",
     CS_KEY_PRESSED_4X: "quad",
     CS_KEY_PRESSED_5X: "quint",
+}
+
+# ==============================================================================
+# THERMOSTAT (CC 0x40 / 0x42 / 0x43) lookup tables
+# ==============================================================================
+THERMOSTAT_MODES = {
+    0x00: "off",     0x01: "heat",          0x02: "cool",        0x03: "auto",
+    0x04: "aux",     0x05: "resume",        0x06: "fan",         0x07: "furnace",
+    0x08: "dry",     0x09: "moist",         0x0A: "auto changeover",
+    0x0B: "energy save heat", 0x0C: "energy save cool",
+    0x0D: "away",    0x0F: "full power",
+}
+THERMOSTAT_OP_STATES = {
+    0x00: "idle",    0x01: "heating",       0x02: "cooling",     0x03: "fan only",
+    0x04: "pending heat", 0x05: "pending cool", 0x06: "vent / economiser",
+}
+THERMOSTAT_SETPOINT_TYPES = {
+    0x01: "heat",    0x02: "cool",          0x07: "furnace",     0x08: "dry",
+    0x09: "moist",   0x0A: "auto changeover",
+    0x0B: "energy save heat", 0x0C: "energy save cool",
+    0x0D: "away heat", 0x0E: "away cool",   0x0F: "full power",
 }
 
 # ==============================================================================
@@ -638,6 +717,36 @@ class Plugin(indigo.PluginBase):
         elif cmd_class == CC_WAKE_UP:
             handled = self._handle_wake_up(device, cmd_func, raw)
 
+        elif cmd_class == CC_SCENE_ACTIVATION   and cmd_func == CMD_SCENE_ACTIVATION_SET:
+            handled = self._handle_scene_activation(device, raw)
+
+        elif cmd_class == CC_THERMOSTAT_MODE    and cmd_func == CMD_THERMOSTAT_MODE_REPORT:
+            handled = self._handle_thermostat_mode(device, raw)
+
+        elif cmd_class == CC_THERMOSTAT_OP_STATE and cmd_func == CMD_THERMOSTAT_OP_STATE_REPORT:
+            handled = self._handle_thermostat_op_state(device, raw)
+
+        elif cmd_class == CC_THERMOSTAT_SETPOINT and cmd_func == CMD_THERMOSTAT_SETPOINT_REPORT:
+            handled = self._handle_thermostat_setpoint(device, raw)
+
+        elif cmd_class == CC_VERSION            and cmd_func == CMD_VERSION_REPORT:
+            handled = self._handle_version(device, raw)
+
+        elif cmd_class == CC_HAIL:
+            # Hail is just "I have an update for you" — no payload to parse.
+            self.logger.debug(f"{device.name}: HAIL received")
+            self._touch(device)
+            handled = True
+
+        elif cmd_class == CC_DEVICE_RESET_LOCAL:
+            self.logger.warning(
+                f"{device.name} [Node {node_id}]: DEVICE_RESET_LOCALLY — "
+                f"node has been factory reset / removed from network"
+            )
+            self._safe_update(device, "displayStatus", value="reset locally")
+            device.updateStateOnServer("deviceOnline", value=False, uiValue="reset")
+            handled = True
+
         if not handled and self.log_unknown:
             self.logger.info(
                 f"{device.name} [Node {node_id}]: "
@@ -956,9 +1065,112 @@ class Plugin(indigo.PluginBase):
             self._touch(device)
             return True
 
+        elif notif_type == NOTIF_HEAT:
+            # 0x01 over-temp / heat detected, 0x02 over-temp (location provided),
+            # 0x05 under-temp, 0x06 under-temp (location), 0x00 idle
+            if notif_event in (0x01, 0x02):
+                self.logger.warning(f"{device.name}: HEAT alarm — over-temperature")
+                self._safe_update(device, "heatAlarm",     value=True,  uiValue="hot")
+                self._safe_update(device, "displayStatus", value="hot")
+            elif notif_event in (0x05, 0x06):
+                self.logger.warning(f"{device.name}: HEAT alarm — under-temperature")
+                self._safe_update(device, "heatAlarm",     value=True,  uiValue="cold")
+                self._safe_update(device, "displayStatus", value="cold")
+            elif notif_event == 0x00:
+                self.logger.info(f"{device.name}: HEAT alarm CLEARED")
+                self._safe_update(device, "heatAlarm",     value=False, uiValue="clear")
+                self._safe_update(device, "displayStatus", value="clear")
+            else:
+                self.logger.info(
+                    f"{device.name}: HEAT event=0x{notif_event:02X} (unhandled)"
+                )
+            self._touch(device)
+            return True
+
+        elif notif_type == NOTIF_SYSTEM:
+            # 0x01 hardware failure, 0x02 software failure, 0x03 hw fail (mfgr code),
+            # 0x04 sw fail (mfgr code), 0x05 heartbeat, 0x06 tampering
+            labels = {0x01: "hardware failure", 0x02: "software failure",
+                      0x03: "hardware failure", 0x04: "software failure",
+                      0x05: "heartbeat",        0x06: "tampering"}
+            label = labels.get(notif_event, f"event=0x{notif_event:02X}")
+            if notif_event == 0x05:
+                self.logger.debug(f"{device.name}: SYSTEM heartbeat")
+            elif notif_event == 0x00:
+                self.logger.info(f"{device.name}: SYSTEM event idle")
+            else:
+                self.logger.warning(f"{device.name}: SYSTEM {label}")
+                self._safe_update(device, "displayStatus", value=label)
+            self._touch(device)
+            return True
+
+        elif notif_type == NOTIF_SIREN:
+            if notif_event == 0x01:
+                self.logger.warning(f"{device.name}: Siren ACTIVE")
+                self._safe_update(device, "sirenActive",   value=True,  uiValue="active")
+                device.updateStateOnServer("onOffState",    value=True)
+                self._safe_update(device, "displayStatus", value="active")
+            elif notif_event == 0x00:
+                self.logger.info(f"{device.name}: Siren silenced")
+                self._safe_update(device, "sirenActive",   value=False, uiValue="silent")
+                device.updateStateOnServer("onOffState",    value=False)
+                self._safe_update(device, "displayStatus", value="silent")
+            self._touch(device)
+            return True
+
+        elif notif_type == NOTIF_WATER_VALVE:
+            # 0x01 = valve operation, 0x02 = master valve operation,
+            # 0x03 = short circuit, 0x04 = current alarm, 0x05 = master current alarm
+            if notif_event in (0x01, 0x02):
+                self.logger.info(f"{device.name}: Water valve operating")
+                self._safe_update(device, "valveOpen",     value=True,  uiValue="operating")
+                self._safe_update(device, "displayStatus", value="valve operating")
+            elif notif_event in (0x03, 0x04, 0x05):
+                self.logger.warning(f"{device.name}: Water valve fault (event=0x{notif_event:02X})")
+                self._safe_update(device, "displayStatus", value="valve fault")
+            elif notif_event == 0x00:
+                self.logger.info(f"{device.name}: Water valve idle")
+                self._safe_update(device, "valveOpen",     value=False, uiValue="idle")
+                self._safe_update(device, "displayStatus", value="valve idle")
+            self._touch(device)
+            return True
+
+        elif notif_type == NOTIF_GAS:
+            if notif_event in (0x01, 0x02, 0x03, 0x04):
+                self.logger.warning(f"{device.name}: GAS leak detected")
+                self._safe_update(device, "gasLeak",       value=True,  uiValue="leak")
+                device.updateStateOnServer("onOffState",    value=True)
+                self._safe_update(device, "displayStatus", value="gas leak")
+            elif notif_event == 0x00:
+                self.logger.info(f"{device.name}: Gas alarm CLEARED")
+                self._safe_update(device, "gasLeak",       value=False, uiValue="clear")
+                device.updateStateOnServer("onOffState",    value=False)
+                self._safe_update(device, "displayStatus", value="clear")
+            self._touch(device)
+            return True
+
+        elif notif_type in (NOTIF_APPLIANCE, NOTIF_HOME_HEALTH, NOTIF_WEATHER):
+            # No dedicated state column; surface via displayStatus + log line so users
+            # who care can still trigger on the message string. event=0 always = idle.
+            type_name = NOTIF_TYPE_NAMES.get(notif_type, f"0x{notif_type:02X}")
+            if notif_event == 0x00:
+                self.logger.debug(f"{device.name}: {type_name} idle")
+                self._safe_update(device, "displayStatus", value="clear")
+            else:
+                self.logger.info(
+                    f"{device.name}: {type_name} event=0x{notif_event:02X}"
+                )
+                self._safe_update(
+                    device, "displayStatus",
+                    value=f"{type_name.lower()} 0x{notif_event:02X}",
+                )
+            self._touch(device)
+            return True
+
         # Unknown notification type — log for investigation
+        type_name = NOTIF_TYPE_NAMES.get(notif_type, f"0x{notif_type:02X}")
         self.logger.info(
-            f"{device.name}: NOTIFICATION type=0x{notif_type:02X} "
+            f"{device.name}: NOTIFICATION {type_name} "
             f"status=0x{notif_status:02X} event=0x{notif_event:02X} (unhandled)"
         )
         return False
@@ -1130,8 +1342,10 @@ class Plugin(indigo.PluginBase):
         raw_val = raw[2]
         level   = 99 if raw_val == 0xFF else raw_val
         is_on   = level > 0
-        self.logger.info(f"{device.name}: Basic report = {level}")
-        self._safe_update(device, "dimLevel",   value=level, uiValue=str(level))
+        label   = "on" if is_on else "off"
+        self.logger.info(f"{device.name}: Basic report = {level} ({label})")
+        self._safe_update(device, "dimLevel",    value=level, uiValue=str(level))
+        self._safe_update(device, "switchState", value=is_on, uiValue=label)
         device.updateStateOnServer("onOffState", value=is_on)
         self._touch(device)
         return True
@@ -1243,6 +1457,122 @@ class Plugin(indigo.PluginBase):
                 uiValue="closed" if latch_closed else "open"
             )
 
+        self._touch(device)
+        return True
+
+    def _handle_scene_activation(self, device, raw) -> bool:
+        """
+        SCENE_ACTIVATION_SET (CC=0x2B, cmd=0x01)
+        [0x2B, 0x01, scene_id, dimming_duration]
+        Older scene CC; sent by some controllers as well as / instead of CENTRAL_SCENE.
+        Treated as a single-press of `scene_id`.
+        """
+        if len(raw) < 3:
+            return False
+        scene_id = raw[2]
+        ts       = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.logger.info(f"{device.name}: SceneActivation Set scene={scene_id}")
+        self._safe_update(device, "lastScene",       value=scene_id)
+        self._safe_update(device, "lastSceneAction", value="activated")
+        self._safe_update(device, "sceneTimestamp",  value=ts)
+        self._safe_update(device, "displayStatus",    value=f"S{scene_id} activated")
+        device.updateStateOnServer("onOffState",      value=True)
+        self._touch(device)
+        return True
+
+    def _handle_thermostat_mode(self, device, raw) -> bool:
+        """
+        THERMOSTAT_MODE_REPORT (CC=0x40, cmd=0x03)
+        [0x40, 0x03, mode_byte (and optional manufacturer-specific data byte/s)]
+        bits[4:0] of mode_byte = mode value
+        """
+        if len(raw) < 3:
+            return False
+        mode  = raw[2] & 0x1F
+        label = THERMOSTAT_MODES.get(mode, f"mode_0x{mode:02X}")
+        self.logger.info(f"{device.name}: Thermostat mode = {label}")
+        self._safe_update(device, "thermostatMode",  value=label)
+        self._safe_update(device, "displayStatus",   value=label)
+        self._touch(device)
+        return True
+
+    def _handle_thermostat_op_state(self, device, raw) -> bool:
+        """
+        THERMOSTAT_OPERATING_STATE_REPORT (CC=0x42, cmd=0x03)
+        [0x42, 0x03, state]
+        """
+        if len(raw) < 3:
+            return False
+        state = raw[2]
+        label = THERMOSTAT_OP_STATES.get(state, f"state_0x{state:02X}")
+        self.logger.info(f"{device.name}: Thermostat op state = {label}")
+        self._safe_update(device, "thermostatOpState", value=label)
+        self._safe_update(device, "displayStatus",     value=label)
+        self._touch(device)
+        return True
+
+    def _handle_thermostat_setpoint(self, device, raw) -> bool:
+        """
+        THERMOSTAT_SETPOINT_REPORT (CC=0x43, cmd=0x03)
+        [0x43, 0x03, setpoint_type, prec_scale_size, value_bytes...]
+        Same prec_scale_size encoding as SENSOR_MULTILEVEL.
+        scale: 0=degC  1=degF
+        """
+        if len(raw) < 5:
+            return False
+        sp_type         = raw[2] & 0x0F
+        prec_scale_size = raw[3]
+        size            = prec_scale_size & 0x07
+        scale           = (prec_scale_size >> 3) & 0x03
+        precision       = (prec_scale_size >> 5) & 0x07
+        if len(raw) < 4 + size:
+            return False
+
+        value_bytes = raw[4:4 + size]
+        try:
+            if   size == 1: raw_val = struct.unpack(">b", bytes(value_bytes))[0]
+            elif size == 2: raw_val = struct.unpack(">h", bytes(value_bytes))[0]
+            elif size == 4: raw_val = struct.unpack(">i", bytes(value_bytes))[0]
+            else:           return False
+        except struct.error as e:
+            self.logger.error(f"{device.name}: THERMOSTAT_SETPOINT parse error: {e}")
+            return False
+
+        value         = raw_val / (10 ** precision)
+        reported_unit = "degC" if scale == 0 else "degF"
+        # Convert to user's preferred unit if it differs
+        if reported_unit != self.temp_unit:
+            if self.temp_unit == "degF":
+                value = value * 9.0 / 5.0 + 32.0
+            else:
+                value = (value - 32.0) * 5.0 / 9.0
+            precision = max(precision, 1)
+        unit  = self.temp_unit
+        dp    = max(0, precision)
+        ui    = f"{value:.{dp}f} {unit}"
+        type_label = THERMOSTAT_SETPOINT_TYPES.get(sp_type, f"type_0x{sp_type:02X}")
+
+        self.logger.info(f"{device.name}: Thermostat setpoint ({type_label}) = {ui}")
+        self._safe_update(device, "thermostatSetpoint", value=round(value, dp), uiValue=ui)
+        self._safe_update(device, "thermostatSetpointType", value=type_label)
+        self._safe_update(device, "displayStatus",      value=ui)
+        self._touch(device)
+        return True
+
+    def _handle_version(self, device, raw) -> bool:
+        """
+        VERSION_REPORT (CC=0x86, cmd=0x12)
+        v1: [0x86, 0x12, library_type, protocol_ver, protocol_sub, app_ver, app_sub]
+        v2: appends hw_version + n_firmware + per-firmware (ver, sub) pairs.
+        We surface protocol and app version as a single "x.y / a.b" string for diagnostics.
+        """
+        if len(raw) < 7:
+            return False
+        proto_ver = f"{raw[3]}.{raw[4]:02d}"
+        app_ver   = f"{raw[5]}.{raw[6]:02d}"
+        ver_str   = f"app {app_ver} / proto {proto_ver}"
+        self.logger.info(f"{device.name}: VERSION = {ver_str}")
+        self._safe_update(device, "firmwareVersion", value=ver_str)
         self._touch(device)
         return True
 
@@ -1409,58 +1739,6 @@ class Plugin(indigo.PluginBase):
                 raw = raw[7:7 + cmd_len]
 
         return node_id, raw
-
-    def _update_display(self, device, sensor_type: str, is_on: bool):
-        """Set displayStatus string and device icon based on configured sensor type."""
-        if sensor_type == "motion":
-            label = "detected" if is_on else "clear"
-            self._safe_update(device, "displayStatus", value=label)
-            device.updateStateImageOnServer(
-                indigo.kStateImageSel.MotionSensorTripped if is_on
-                else indigo.kStateImageSel.MotionSensor
-            )
-        elif sensor_type == "contact":
-            label = "open" if is_on else "closed"
-            self._safe_update(device, "displayStatus", value=label)
-            device.updateStateImageOnServer(
-                indigo.kStateImageSel.SensorTripped if is_on
-                else indigo.kStateImageSel.SensorOff
-            )
-        elif sensor_type == "luminance":
-            device.updateStateImageOnServer(
-                indigo.kStateImageSel.LightSensorOn if is_on
-                else indigo.kStateImageSel.LightSensor
-            )
-        elif sensor_type == "temperature":
-            device.updateStateImageOnServer(indigo.kStateImageSel.TemperatureSensor)
-        elif sensor_type == "humidity":
-            device.updateStateImageOnServer(indigo.kStateImageSel.HumiditySensor)
-        elif sensor_type == "energy":
-            device.updateStateImageOnServer(
-                indigo.kStateImageSel.PowerOn if is_on
-                else indigo.kStateImageSel.PowerOff
-            )
-        elif sensor_type == "battery":
-            device.updateStateImageOnServer(
-                indigo.kStateImageSel.SensorTripped if not is_on
-                else indigo.kStateImageSel.SensorOn
-            )
-        elif sensor_type == "lock":
-            label = "locked" if is_on else "unlocked"
-            self._safe_update(device, "displayStatus", value=label)
-            device.updateStateImageOnServer(
-                indigo.kStateImageSel.SensorTripped if is_on
-                else indigo.kStateImageSel.SensorOff
-            )
-        elif sensor_type == "scene":
-            device.updateStateImageOnServer(indigo.kStateImageSel.SensorOn)
-        else:   # generic
-            label = "on" if is_on else "off"
-            self._safe_update(device, "displayStatus", value=label)
-            device.updateStateImageOnServer(
-                indigo.kStateImageSel.SensorOn if is_on
-                else indigo.kStateImageSel.SensorOff
-            )
 
     def _extract_notif_user(self, raw) -> int | None:
         """
