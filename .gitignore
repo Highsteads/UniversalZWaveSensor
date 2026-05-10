@@ -10,6 +10,7 @@ __pycache__/
 
 # Indigo plugin — personal config (copy secrets_example.py if present)
 Contents/Server Plugin/secrets.py
+Contents/Server Plugin/IndigoSecrets.py
 
 # Personal session notes
 CLAUDE.md
