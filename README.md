@@ -87,6 +87,21 @@ Plug/Relay devices carry only: `switchState`, `watts`, `kwh`, `voltage`, `curren
 
 ---
 
+## Credentials — `IndigoSecrets.py` vs `IndigoSecrets_example.py`
+
+**Not applicable to this plugin** — it reads Z-Wave bytes locally via
+Indigo's `indigo.zwave.subscribeToIncoming()` and needs no external API
+credentials. The `IndigoSecrets_example.py` file shipped in the bundle is
+the shared master template kept for ecosystem consistency, but there is
+nothing in it that this plugin uses.
+
+Other CliveS Indigo plugins read sensitive values from a shared master file
+at `/Library/Application Support/Perceptive Automation/IndigoSecrets.py`.
+See e.g. the Ecowitt or EcoFlow Cloud plugin READMEs for the full
+credentials documentation.
+
+---
+
 ## Upgrading from a previous version
 
 Existing plugin devices upgrade automatically. When Indigo loads the new plugin, it calls `device.stateListOrDisplayStateIdChanged()` on each device, which adds any new states with default values. No manual steps are needed. Your existing triggers and action groups continue to work unchanged.
