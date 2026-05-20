@@ -1,6 +1,6 @@
 # Universal Z-Wave Sensor — Indigo Plugin
 
-**Version 5.5** | Indigo 2022.1+ | Python 3.10+
+**Version 5.6** | Indigo 2025.2+ | Python 3.13+
 
 Creates companion plugin devices alongside your existing Indigo Z-Wave devices, exposing sensor values that Indigo does not capture natively — temperature, humidity, luminance, contact state, lock state, scene controller events, and more.
 
@@ -84,21 +84,6 @@ Plug/Relay devices carry only: `switchState`, `watts`, `kwh`, `voltage`, `curren
 2. Unzip the downloaded file — you will get `UniversalZWaveSensor.indigoPlugin`
 3. Double-click `UniversalZWaveSensor.indigoPlugin` — Indigo will install it automatically
 4. Enable the plugin from the Indigo Plugins menu
-
----
-
-## Credentials — `IndigoSecrets.py` vs `IndigoSecrets_example.py`
-
-**Not applicable to this plugin** — it reads Z-Wave bytes locally via
-Indigo's `indigo.zwave.subscribeToIncoming()` and needs no external API
-credentials. The `IndigoSecrets_example.py` file shipped in the bundle is
-the shared master template kept for ecosystem consistency, but there is
-nothing in it that this plugin uses.
-
-Other CliveS Indigo plugins read sensitive values from a shared master file
-at `/Library/Application Support/Perceptive Automation/IndigoSecrets.py`.
-See e.g. the Ecowitt or EcoFlow Cloud plugin READMEs for the full
-credentials documentation.
 
 ---
 
