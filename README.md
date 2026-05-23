@@ -1,6 +1,6 @@
 # Universal Z-Wave Sensor — Indigo Plugin
 
-**Version 5.6** | Indigo 2025.2+ | Python 3.13+
+**Version 5.7** | Indigo 2025.2+ | Python 3.13+
 
 Creates companion plugin devices alongside your existing Indigo Z-Wave devices, exposing sensor values that Indigo does not capture natively — temperature, humidity, luminance, contact state, lock state, scene controller events, and more.
 
@@ -221,10 +221,26 @@ No Indigo installation required — `indigo` is fully mocked. All tests should p
 
 ---
 
+## Logging
+
+Every log line is prefixed with a millisecond timestamp `[HH:MM:SS.mmm]` so
+events can be correlated tightly with other CliveS plugins (Device Activity
+Monitor uses the same convention).
+
+To turn the prefix off (or back on) at any time:
+
+**Plugins → Universal Z-Wave Sensor → Toggle Timestamps in Log (on/off)**
+
+The setting is stored in `pluginPrefs` (`timestampEnabled`) and persists across
+restarts. Defaults to ON.
+
+---
+
 ## Changelog
 
 | Version | Date | Changes |
 |---|---|---|
+| 5.7 | 23-May-2026 | Millisecond timestamp `[HH:MM:SS.mmm]` prefix on every `self.logger` line via `plugin_utils.install_timestamp_filter()`; new "Toggle Timestamps in Log" menu item |
 | 5.5 | 04-May-2026 | Fix displayStatus state-not-defined error on Plug/Relay devices — all displayStatus writes now route through _safe_update and silently skip device types that do not define that state |
 | 5.4 | 04-May-2026 | Generate Indigo Support Report menu item — dumps manufacturer ID, product type/ID, supported command classes, owner props, and all device states to the Indigo log, formatted for pasting into the Indigo forum; Show Plugin Info menu item added |
 | 5.3 | 04-May-2026 | Removed battery/batteryLow/wakeUpInterval states from Plug/Relay device type (mains-powered, irrelevant) |

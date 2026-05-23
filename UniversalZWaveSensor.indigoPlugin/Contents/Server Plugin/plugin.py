@@ -5,9 +5,13 @@
 #              alongside existing Indigo Z-Wave devices, capturing sensor values
 #              (temperature, humidity, contact, etc.) that Indigo does not expose
 #              natively. Uses subscribeToIncoming() to receive ALL Z-Wave bytes.
-# Author:      CliveS & Claude Sonnet 4.6
-# Date:        10-05-2026
-# Version:     5.6
+# Author:      CliveS & Claude Opus 4.7
+# Date:        23-05-2026
+# Version:     5.7
+#
+# v5.7 (23-05-2026): Millisecond timestamp [HH:MM:SS.mmm] prefix on every
+# log line via plugin_utils.install_timestamp_filter() — matches Device
+# Activity Monitor convention. New "Toggle Timestamps in Log" menu item.
 #
 # v5.6 (10-05-2026):
 # - Added SENSOR_MULTILEVEL types: power (0x04), atmospheric pressure (0x09),
@@ -37,6 +41,10 @@ try:
     from plugin_utils import log_startup_banner
 except ImportError:
     log_startup_banner = None
+try:
+    from plugin_utils import install_timestamp_filter
+except ImportError:
+    install_timestamp_filter = None
 
 
 # ==============================================================================
@@ -298,6 +306,12 @@ class Plugin(indigo.PluginBase):
 
     def __init__(self, plugin_id, display_name, version, prefs):
         super().__init__(plugin_id, display_name, version, prefs)
+        self.timestamp_enabled = bool(prefs.get("timestampEnabled", True))
+        if install_timestamp_filter:
+            self._ts_filter = install_timestamp_filter(self, enabled=self.timestamp_enabled)
+        else:
+            self._ts_filter = None
+
         self.debug          = prefs.get("showDebugInfo",         False)
         self.log_unknown    = prefs.get("logUnknownReports",     True)
         self.temp_unit      = prefs.get("tempUnit",              "degC")
@@ -1894,7 +1908,18 @@ class Plugin(indigo.PluginBase):
         return values_dict   # keeps dialog open
 
     def showPluginInfo(self, valuesDict=None, typeId=None):
+        extras = [("Timestamps in Log:", "ON" if self.timestamp_enabled else "OFF")]
         if log_startup_banner:
-            log_startup_banner(self.pluginId, self.pluginDisplayName, self.pluginVersion)
+            log_startup_banner(self.pluginId, self.pluginDisplayName, self.pluginVersion, extras=extras)
         else:
             indigo.server.log(f"{self.pluginDisplayName} v{self.pluginVersion}")
+            for label, value in extras:
+                indigo.server.log(f"  {label} {value}")
+
+    def menuToggleTimestamps(self):
+        self.timestamp_enabled = not self.timestamp_enabled
+        self.pluginPrefs["timestampEnabled"] = self.timestamp_enabled
+        if self._ts_filter:
+            self._ts_filter.enabled = self.timestamp_enabled
+        state = "ON" if self.timestamp_enabled else "OFF"
+        indigo.server.log(f"[{self.pluginDisplayName}] Timestamps in Log -> {state}")
