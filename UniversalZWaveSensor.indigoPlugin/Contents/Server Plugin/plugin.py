@@ -7,7 +7,7 @@
 #              natively. Uses subscribeToIncoming() to receive ALL Z-Wave bytes.
 # Author:      CliveS & Claude Opus 4.7
 # Date:        23-05-2026
-# Version:     5.7
+# Version:     5.8
 #
 # v5.7 (23-05-2026): Millisecond timestamp [HH:MM:SS.mmm] prefix on every
 # log line via plugin_utils.install_timestamp_filter() — matches Device
@@ -529,6 +529,19 @@ class Plugin(indigo.PluginBase):
             if not self.node_to_device[node_id]:
                 del self.node_to_device[node_id]
             self.logger.info(f"Stopped listening on Node {node_id}")
+
+    @staticmethod
+    def didDeviceCommPropertyChange(oldDevice, newDevice):
+        """Restart comm only when the device's source-binding changes.
+
+        sourceDeviceId identifies which native Z-Wave device this companion
+        listens to; endpointId selects a sub-channel for multi-endpoint
+        devices; sensorType (on the generic zwaveSensor type) defines which
+        logic branch runs. Any of these changing means the comm pairing is
+        different and the node_to_device mapping must be rebuilt.
+        """
+        keys = ("sourceDeviceId", "endpointId", "sensorType")
+        return any(oldDevice.pluginProps.get(k) != newDevice.pluginProps.get(k) for k in keys)
 
     def actionControlDevice(self, action, device):
         """Handle on/off/toggle actions for Plug/Relay devices.
