@@ -2,20 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>PluginVersion</key>
-	<string>5.8</string>
-	<key>ServerApiVersion</key>
-	<string>3.0</string>
-	<key>IwsApiVersion</key>
-	<string>1.0.0</string>
-	<key>IOMigrationVersion</key>
-	<integer>3</integer>
 	<key>CFBundleDisplayName</key>
 	<string>Universal Z-Wave Sensor</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.clives.universal-zwave-sensor</string>
-	<key>CFBundleVersion</key>
-	<string>5.8</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -23,6 +13,8 @@
 			<string>https://github.com/Highsteads/UniversalZWaveSensor</string>
 		</dict>
 	</array>
+	<key>CFBundleVersion</key>
+	<string>1.0.0</string>
 	<key>GithubInfo</key>
 	<dict>
 		<key>GithubRepo</key>
@@ -30,5 +22,13 @@
 		<key>GithubUser</key>
 		<string>Highsteads</string>
 	</dict>
+	<key>IOMigrationVersion</key>
+	<integer>3</integer>
+	<key>IwsApiVersion</key>
+	<string>1.0.0</string>
+	<key>PluginVersion</key>
+	<string>5.8</string>
+	<key>ServerApiVersion</key>
+	<string>3.0</string>
 </dict>
 </plist>
