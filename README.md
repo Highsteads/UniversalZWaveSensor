@@ -261,8 +261,8 @@ restarts. Defaults to ON.
 | 2.0 | 21-Mar-2026 | Removed known-device mirror path; plugin now uses raw Z-Wave bytes only |
 | 1.0 | 20-Mar-2026 | Initial release |
 
----
+## Authors & licence
 
-## Licence
+Vibed into existence by **CliveS**, who knew what he wanted, argued until he got it, and tested it on a real house. Typed at inhuman speed by **Claude** (Anthropic), who mostly did as it was told.
 
-MIT — free to use, modify, and distribute.
+© 2026 CliveS · [MIT licence](LICENSE) — copy it, fork it, bend it, break it, fix it, ship it. If it breaks, you get to keep both pieces.
