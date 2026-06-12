@@ -5,9 +5,9 @@
 #              alongside existing Indigo Z-Wave devices, capturing sensor values
 #              (temperature, humidity, contact, etc.) that Indigo does not expose
 #              natively. Uses subscribeToIncoming() to receive ALL Z-Wave bytes.
-# Author:      CliveS & Claude Opus 4.7
-# Date:        23-05-2026
-# Version:     5.8
+# Author:      CliveS & Claude Fable 5
+# Date:        12-06-2026 09:05
+# Version:     5.9
 #
 # v5.7 (23-05-2026): Millisecond timestamp [HH:MM:SS.mmm] prefix on every
 # log line via plugin_utils.install_timestamp_filter() — matches Device
@@ -61,10 +61,13 @@ CC_METER                = 0x32
 CC_THERMOSTAT_MODE      = 0x40
 CC_THERMOSTAT_OP_STATE  = 0x42
 CC_THERMOSTAT_SETPOINT  = 0x43
+CC_CRC16                = 0x56   # CRC-16 encapsulation (older FLiRS/sensor kit)
 CC_DEVICE_RESET_LOCAL   = 0x5A   # device performed a factory reset / removed from network
 CC_CENTRAL_SCENE        = 0x5B   # central scene notifications (buttons, remotes)
 CC_MULTI_CHANNEL        = 0x60   # multi-channel / endpoint encapsulation
 CC_DOOR_LOCK            = 0x62
+CC_BARRIER_OPERATOR     = 0x66   # garage doors / gates (GoControl GD00Z etc.)
+CC_SUPERVISION          = 0x6C   # supervision encapsulation (S2-era devices wrap reports in this)
 CC_NOTIFICATION         = 0x71   # replaces ALARM (0x9C) in v4+
 CC_BATTERY              = 0x80
 CC_HAIL                 = 0x82   # legacy "I have an update" hint
@@ -72,7 +75,12 @@ CC_WAKE_UP              = 0x84
 CC_VERSION              = 0x86   # firmware/app version reports
 
 # Command function codes (second byte in report)
+CMD_BASIC_SET                   = 0x01   # sent to association groups on state change
 CMD_BASIC_REPORT                = 0x03
+CMD_SWITCH_BINARY_SET           = 0x01   # some devices send SET (not REPORT) via direct association
+CMD_CRC16_ENCAP                 = 0x01
+CMD_BARRIER_OPERATOR_REPORT     = 0x03
+CMD_SUPERVISION_GET             = 0x01   # carries the encapsulated report
 CMD_SWITCH_BINARY_REPORT        = 0x03
 CMD_SWITCH_MULTILEVEL_REPORT    = 0x03
 CMD_SCENE_ACTIVATION_SET        = 0x01
@@ -672,39 +680,66 @@ class Plugin(indigo.PluginBase):
         """Dispatch one Z-Wave report to the correct parser for a single plugin device."""
 
         # ------------------------------------------------------------------
-        # Multi-channel encapsulation (CC 0x60, CMD 0x0D)
-        # Frame: [0x60, 0x0D, src_endpoint, dst_endpoint, cc, func, payload...]
-        # Unwrap the inner frame, then optionally filter by endpoint.
+        # Encapsulation unwrapping — peel transport layers to reach the report.
+        # Spec nesting order (outer -> inner): CRC-16 > Multi Channel >
+        # Supervision > application CC, so a loop handles any combination:
+        #   CRC-16       (0x56 0x01)  [0x56, 0x01, inner..., crc_hi, crc_lo]
+        #   Multi Channel(0x60 0x0D)  [0x60, 0x0D, src_ep, dst_ep, inner...]
+        #   Supervision  (0x6C 0x01)  [0x6C, 0x01, session, len, inner...]
+        # On unsolicited incoming reports the originating endpoint is src_ep
+        # (dst_ep is the controller side, almost always 0 or 1), so the
+        # per-device endpoint filter matches either.
         # ------------------------------------------------------------------
-        if cmd_class == CC_MULTI_CHANNEL and cmd_func == CMD_MULTI_CHANNEL_ENCAP:
-            if len(raw) < 6:
+        for _ in range(3):   # real frames nest at most two encapsulation layers
+            if cmd_class == CC_CRC16 and cmd_func == CMD_CRC16_ENCAP:
+                if len(raw) < 6:
+                    return
+                raw = raw[2:-2]            # strip encap header + 2 CRC bytes
+
+            elif cmd_class == CC_MULTI_CHANNEL and cmd_func == CMD_MULTI_CHANNEL_ENCAP:
+                if len(raw) < 6:
+                    return
+                src_ep = raw[2]
+                dst_ep = raw[3]
+                raw    = raw[4:]           # inner frame: [cc, func, payload...]
+
+                # Per-device endpoint filter — blank or "0" means accept all
+                ep_str = device.pluginProps.get("endpointId", "").strip()
+                if ep_str and ep_str != "0":
+                    try:
+                        if int(ep_str) not in (src_ep, dst_ep):
+                            if self.debug:
+                                self.logger.debug(
+                                    f"{device.name}: MC src_ep={src_ep} dst_ep={dst_ep} "
+                                    f"(want ep {ep_str}) — skipped"
+                                )
+                            return
+                    except ValueError:
+                        pass
+
+                if self.debug:
+                    self.logger.debug(
+                        f"{device.name}: Multi-channel src_ep={src_ep} dst_ep={dst_ep} "
+                        f"-> CC=0x{raw[0]:02X}"
+                    )
+
+            elif cmd_class == CC_SUPERVISION and cmd_func == CMD_SUPERVISION_GET:
+                if len(raw) < 6:
+                    return
+                raw = raw[4:]              # strip [0x6C, 0x01, session, len]
+                if self.debug:
+                    self.logger.debug(
+                        f"{device.name}: Supervision-encapsulated -> CC=0x{raw[0]:02X}"
+                    )
+
+            else:
+                break                      # reached the application-level CC
+
+            if len(raw) < 2:
                 return
-            src_ep    = raw[2]
-            dst_ep    = raw[3]
-            raw       = raw[4:]            # inner frame: [cc, func, payload...]
             cmd_class = raw[0]
             cmd_func  = raw[1]
             hex_str   = " ".join(f"{b:02X}" for b in raw)
-
-            # Per-device endpoint filter — blank or "0" means accept all endpoints
-            ep_str = device.pluginProps.get("endpointId", "").strip()
-            if ep_str and ep_str != "0":
-                try:
-                    if dst_ep != int(ep_str):
-                        if self.debug:
-                            self.logger.debug(
-                                f"{device.name}: MC dst_ep={dst_ep} "
-                                f"(want ep {ep_str}) — skipped"
-                            )
-                        return
-                except ValueError:
-                    pass
-
-            if self.debug:
-                self.logger.debug(
-                    f"{device.name}: Multi-channel src_ep={src_ep} dst_ep={dst_ep} "
-                    f"-> CC=0x{cmd_class:02X} [{hex_str}]"
-                )
 
         # ------------------------------------------------------------------
         # Dispatch to parser
@@ -726,14 +761,19 @@ class Plugin(indigo.PluginBase):
         elif cmd_class == CC_METER              and cmd_func == CMD_METER_REPORT:
             handled = self._handle_meter(device, raw)
 
-        elif cmd_class == CC_SWITCH_BINARY      and cmd_func == CMD_SWITCH_BINARY_REPORT:
+        elif cmd_class == CC_SWITCH_BINARY      and cmd_func in (CMD_SWITCH_BINARY_REPORT,
+                                                                 CMD_SWITCH_BINARY_SET):
             handled = self._handle_switch_binary(device, raw)
 
         elif cmd_class == CC_SWITCH_MULTILEVEL  and cmd_func == CMD_SWITCH_MULTILEVEL_REPORT:
             handled = self._handle_switch_multilevel(device, raw)
 
-        elif cmd_class == CC_BASIC              and cmd_func == CMD_BASIC_REPORT:
+        elif cmd_class == CC_BASIC              and cmd_func in (CMD_BASIC_REPORT,
+                                                                 CMD_BASIC_SET):
             handled = self._handle_basic(device, raw)
+
+        elif cmd_class == CC_BARRIER_OPERATOR   and cmd_func == CMD_BARRIER_OPERATOR_REPORT:
+            handled = self._handle_barrier(device, raw)
 
         elif cmd_class == CC_CENTRAL_SCENE     and cmd_func == CMD_CENTRAL_SCENE_NOTIFICATION:
             handled = self._handle_central_scene(device, raw)
@@ -1358,10 +1398,11 @@ class Plugin(indigo.PluginBase):
 
     def _handle_basic(self, device, raw) -> bool:
         """
-        BASIC_REPORT (CC=0x20, cmd=0x03)
-        [0x20, 0x03, value]
+        BASIC_REPORT (CC=0x20, cmd=0x03) and BASIC_SET (cmd=0x01)
+        [0x20, cmd, value]
         value: 0=off  1-99=on/dim  0xFF=on (full)
-        Legacy command class used by many older devices as a catch-all.
+        Legacy catch-all on older devices; BASIC_SET is also what many relays
+        (Zooz ZEN5x family etc.) send to association groups on input change.
         """
         if len(raw) < 3:
             return False
@@ -1370,10 +1411,45 @@ class Plugin(indigo.PluginBase):
         level   = 99 if raw_val == 0xFF else raw_val
         is_on   = level > 0
         label   = "on" if is_on else "off"
-        self.logger.info(f"{device.name}: Basic report = {level} ({label})")
+        verb    = "set" if raw[1] == CMD_BASIC_SET else "report"
+        self.logger.info(f"{device.name}: Basic {verb} = {level} ({label})")
         self._safe_update(device, "dimLevel",    value=level, uiValue=str(level))
         self._safe_update(device, "switchState", value=is_on, uiValue=label)
         device.updateStateOnServer("onOffState", value=is_on)
+        self._touch(device)
+        return True
+
+    def _handle_barrier(self, device, raw) -> bool:
+        """
+        BARRIER_OPERATOR_REPORT (CC=0x66, cmd=0x03)
+        [0x66, 0x03, state]
+        state: 0x00=closed  0x01-0x63=open %  0xFC=closing  0xFD=stopped
+               0xFE=opening  0xFF=open
+        Garage doors / gates (GoControl GD00Z and similar). Read-only here —
+        door commands stay with whatever natively controls the node.
+        """
+        if len(raw) < 3:
+            return False
+
+        state = raw[2]
+        if state == 0x00:
+            label, is_open = "closed", False
+        elif state == 0xFC:
+            label, is_open = "closing", True
+        elif state == 0xFD:
+            label, is_open = "stopped", True
+        elif state == 0xFE:
+            label, is_open = "opening", True
+        elif state == 0xFF:
+            label, is_open = "open", True
+        else:
+            label, is_open = f"open {min(state, 99)}%", True
+
+        self.logger.info(f"{device.name}: Barrier = {label}")
+        self._safe_update(device, "contact", value=is_open,
+                          uiValue="open" if is_open else "closed")
+        device.updateStateOnServer("onOffState", value=is_open)
+        self._safe_update(device, "displayStatus", value=label)
         self._touch(device)
         return True
 

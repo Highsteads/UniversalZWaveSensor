@@ -41,6 +41,15 @@ class _StateImageSel:
     PowerOff            = "PowerOff"
 
 
+class PermissiveStates(dict):
+    """A states dict whose membership test always passes — models a device
+    whose Devices.xml declares every state the handlers can write, so
+    _safe_update() (which gates on `state_id in device.states`) goes through.
+    Tests that need per-type gating pass an explicit states= dict instead."""
+    def __contains__(self, key):
+        return True
+
+
 class MockDevice:
     """
     Minimal Indigo device substitute.
@@ -48,14 +57,21 @@ class MockDevice:
     so tests can assert on the values written.
     """
     def __init__(self, dev_id, name, address="", plugin_id="",
-                 states=None, plugin_props=None, on_state=None):
-        self.id          = dev_id
-        self.name        = name
-        self.address     = str(address)
-        self.pluginId    = plugin_id
-        self.states      = dict(states or {})
-        self.pluginProps = dict(plugin_props or {})
-        self._on_state   = on_state
+                 states=None, plugin_props=None, on_state=None,
+                 device_type_id="", protocol=None):
+        self.id           = dev_id
+        self.name         = name
+        self.address      = str(address)
+        self.pluginId     = plugin_id
+        self.states       = dict(states) if states is not None else PermissiveStates()
+        self.pluginProps  = dict(plugin_props or {})
+        self._on_state    = on_state
+        # defaults to the mock indigo.kProtocol.ZWave singleton (set at runtime,
+        # after _indigo exists) so get_native_zwave_devices() accepts the device
+        self.protocol     = protocol if protocol is not None else _indigo.kProtocol.ZWave
+        # "" is not in DEVICE_TYPE_SENSOR_TYPE, so _sensor_type() falls back
+        # to pluginProps["sensorType"] — the legacy-device path most tests use
+        self.deviceTypeId = device_type_id
 
         # Capture all writes during the test
         self.state_writes = {}          # key -> {"value": v, "uiValue": u}
@@ -269,6 +285,183 @@ class TestMultiChannelRouting(unittest.TestCase):
         dev = self._dev()
         self.p._route_zwave_report(dev, 223, raw[0], raw[1], raw, "")
         self.assertEqual(dev.state_writes, {})
+
+    def test_mc_endpoint_filter_matches_source_endpoint(self):
+        """Unsolicited report FROM endpoint 2 (src_ep=2, dst_ep=0) matches endpointId=2.
+
+        This is the ZEN58-style case: the input child reports from src_ep=2
+        while dst_ep is the controller side (0/1). v5.8 filtered on dst_ep
+        only, which silently dropped every such report.
+        """
+        pss = (1 << 5) | (0 << 3) | 2
+        inner = [0x31, 0x05, 0x01, pss] + list(struct.pack(">h", 215))
+        raw = self._mc_wrap(2, 0, inner)   # src_ep=2, dst_ep=0
+        dev = self._dev(endpoint_id="2")
+        self.p._route_zwave_report(dev, 223, raw[0], raw[1], raw, "")
+        self.assertIn("temperature", dev.state_writes)
+
+
+# ==============================================================================
+# Tests: Supervision + CRC-16 encapsulation unwrapping
+# ==============================================================================
+
+class TestEncapsulationUnwrap(unittest.TestCase):
+    """CC 0x6C (Supervision) and CC 0x56 (CRC-16) wrappers must be peeled."""
+
+    def setUp(self):
+        self.p = make_plugin(debug=True)
+
+    def _dev(self, endpoint_id=""):
+        return MockDevice(1, "Test", address="223",
+                          plugin_props={"sensorType": "contact",
+                                        "endpointId": endpoint_id})
+
+    @staticmethod
+    def _supervision_wrap(inner_bytes):
+        """[0x6C, 0x01, session, encap_len, inner...]"""
+        return [0x6C, 0x01, 0x2A, len(inner_bytes)] + list(inner_bytes)
+
+    @staticmethod
+    def _crc16_wrap(inner_bytes):
+        """[0x56, 0x01, inner..., crc_hi, crc_lo] — CRC not validated by plugin."""
+        return [0x56, 0x01] + list(inner_bytes) + [0xAB, 0xCD]
+
+    def test_supervision_wrapped_notification_unwraps(self):
+        """Supervision-encapsulated door-open NOTIFICATION is parsed."""
+        # Access Control (0x06) event 0x16 = door open
+        inner = [0x71, 0x05, 0x00, 0x00, 0x00, 0xFF, 0x06, 0x16, 0x00]
+        raw = self._supervision_wrap(inner)
+        dev = self._dev()
+        self.p._route_zwave_report(dev, 223, raw[0], raw[1], raw, "")
+        self.assertIn("contact", dev.state_writes)
+        self.assertTrue(dev.state_writes["contact"]["value"])
+
+    def test_supervision_inside_multichannel_unwraps(self):
+        """MC(EP2) -> Supervision -> Notification — the ZEN58 S2 input path."""
+        inner = [0x71, 0x05, 0x00, 0x00, 0x00, 0xFF, 0x06, 0x17, 0x00]  # door closed
+        sup   = self._supervision_wrap(inner)
+        raw   = [0x60, 0x0D, 0x02, 0x00] + sup   # src_ep=2, dst_ep=0
+        dev = self._dev(endpoint_id="2")
+        self.p._route_zwave_report(dev, 223, raw[0], raw[1], raw, "")
+        self.assertIn("contact", dev.state_writes)
+        self.assertFalse(dev.state_writes["contact"]["value"])
+
+    def test_crc16_wrapped_report_unwraps(self):
+        """CRC-16 encapsulated binary sensor report is parsed."""
+        inner = [0x30, 0x03, 0xFF, 0x0A]   # contact active, type=door/window
+        raw = self._crc16_wrap(inner)
+        dev = self._dev()
+        self.p._route_zwave_report(dev, 223, raw[0], raw[1], raw, "")
+        self.assertIn("contact", dev.state_writes)
+        self.assertTrue(dev.state_writes["contact"]["value"])
+
+    def test_supervision_too_short_dropped(self):
+        """Truncated supervision frame is dropped without crashing."""
+        raw = [0x6C, 0x01, 0x2A]
+        dev = self._dev()
+        self.p._route_zwave_report(dev, 223, raw[0], raw[1], raw, "")
+        self.assertEqual(dev.state_writes, {})
+
+
+# ==============================================================================
+# Tests: BASIC_SET / SWITCH_BINARY_SET (association-group reports)
+# ==============================================================================
+
+class TestAssociationSetCommands(unittest.TestCase):
+    """Devices that send SET (not REPORT) to association groups on change."""
+
+    def setUp(self):
+        self.p = make_plugin()
+
+    def _dev(self):
+        return MockDevice(1, "Test", address="30",
+                          plugin_props={"sensorType": "generic"})
+
+    def test_basic_set_on(self):
+        raw = [0x20, 0x01, 0xFF]
+        dev = self._dev()
+        self.p._route_zwave_report(dev, 30, raw[0], raw[1], raw, "")
+        self.assertTrue(dev.state_writes["onOffState"]["value"])
+
+    def test_basic_set_off(self):
+        raw = [0x20, 0x01, 0x00]
+        dev = self._dev()
+        self.p._route_zwave_report(dev, 30, raw[0], raw[1], raw, "")
+        self.assertFalse(dev.state_writes["onOffState"]["value"])
+
+    def test_switch_binary_set_on(self):
+        raw = [0x25, 0x01, 0xFF]
+        dev = self._dev()
+        self.p._route_zwave_report(dev, 30, raw[0], raw[1], raw, "")
+        self.assertTrue(dev.state_writes["onOffState"]["value"])
+
+
+# ==============================================================================
+# Tests: BARRIER_OPERATOR (0x66) — garage doors / gates
+# ==============================================================================
+
+class TestHandleBarrier(unittest.TestCase):
+    """BARRIER_OPERATOR_REPORT — open/closed/opening/closing/stopped/position."""
+
+    def setUp(self):
+        self.p = make_plugin()
+
+    def _dev(self):
+        return MockDevice(1, "Garage Door", address="40",
+                          plugin_props={"sensorType": "contact"})
+
+    def _report(self, state):
+        return [0x66, 0x03, state]
+
+    def test_barrier_closed(self):
+        dev = self._dev()
+        raw = self._report(0x00)
+        self.p._route_zwave_report(dev, 40, raw[0], raw[1], raw, "")
+        self.assertFalse(dev.state_writes["contact"]["value"])
+        self.assertFalse(dev.state_writes["onOffState"]["value"])
+        self.assertEqual(dev.state_writes["displayStatus"]["value"], "closed")
+
+    def test_barrier_open(self):
+        dev = self._dev()
+        raw = self._report(0xFF)
+        self.p._route_zwave_report(dev, 40, raw[0], raw[1], raw, "")
+        self.assertTrue(dev.state_writes["contact"]["value"])
+        self.assertEqual(dev.state_writes["displayStatus"]["value"], "open")
+
+    def test_barrier_opening(self):
+        dev = self._dev()
+        raw = self._report(0xFE)
+        self.p._route_zwave_report(dev, 40, raw[0], raw[1], raw, "")
+        self.assertEqual(dev.state_writes["displayStatus"]["value"], "opening")
+        self.assertTrue(dev.state_writes["onOffState"]["value"])
+
+    def test_barrier_closing(self):
+        dev = self._dev()
+        raw = self._report(0xFC)
+        self.p._route_zwave_report(dev, 40, raw[0], raw[1], raw, "")
+        self.assertEqual(dev.state_writes["displayStatus"]["value"], "closing")
+
+    def test_barrier_stopped(self):
+        dev = self._dev()
+        raw = self._report(0xFD)
+        self.p._route_zwave_report(dev, 40, raw[0], raw[1], raw, "")
+        self.assertEqual(dev.state_writes["displayStatus"]["value"], "stopped")
+
+    def test_barrier_partial_position(self):
+        dev = self._dev()
+        raw = self._report(0x32)   # 50% open
+        self.p._route_zwave_report(dev, 40, raw[0], raw[1], raw, "")
+        self.assertEqual(dev.state_writes["displayStatus"]["value"], "open 50%")
+        self.assertTrue(dev.state_writes["contact"]["value"])
+
+    def test_barrier_too_short(self):
+        """Truncated frame must not write any barrier state (rawLastReport ok)."""
+        dev = self._dev()
+        raw = [0x66, 0x03]
+        self.p._route_zwave_report(dev, 40, raw[0], raw[1], raw, "")
+        self.assertNotIn("contact", dev.state_writes)
+        self.assertNotIn("displayStatus", dev.state_writes)
+        self.assertNotIn("onOffState", dev.state_writes)
 
 
 # ==============================================================================
@@ -738,22 +931,22 @@ class TestHandleBattery(unittest.TestCase):
     def test_normal_level_85(self):
         dev = self._dev()
         self.assertTrue(self.p._handle_battery(dev, [0x80, 0x03, 85]))
-        self.assertEqual(dev.state_writes["batteryLevel"]["value"],   85)
-        self.assertEqual(dev.state_writes["batteryLevel"]["uiValue"], "85%")
+        self.assertEqual(dev.state_writes["battery"]["value"],   85)
+        self.assertEqual(dev.state_writes["battery"]["uiValue"], "85%")
 
     def test_low_warning_0xFF(self):
         """0xFF is the Z-Wave battery-low sentinel -> value=1, uiValue=LOW."""
         dev = self._dev()
         self.assertTrue(self.p._handle_battery(dev, [0x80, 0x03, 0xFF]))
-        self.assertEqual(dev.state_writes["batteryLevel"]["value"],   1)
-        self.assertEqual(dev.state_writes["batteryLevel"]["uiValue"], "LOW")
+        self.assertEqual(dev.state_writes["battery"]["value"],   1)
+        self.assertEqual(dev.state_writes["battery"]["uiValue"], "LOW")
         self.p.logger.warning.assert_called()
 
     def test_zero_percent(self):
         """0x00 is a valid 0% reading (distinct from the 0xFF sentinel)."""
         dev = self._dev()
         self.assertTrue(self.p._handle_battery(dev, [0x80, 0x03, 0x00]))
-        self.assertEqual(dev.state_writes["batteryLevel"]["value"], 0)
+        self.assertEqual(dev.state_writes["battery"]["value"], 0)
 
     def test_too_short_returns_false(self):
         self.assertFalse(self.p._handle_battery(self._dev(), [0x80, 0x03]))
@@ -1131,6 +1324,8 @@ class TestInitDisplayStatus(unittest.TestCase):
         self.p = make_plugin()
 
     def _dev(self, sensor_type, states):
+        # displayStatus must exist in the state list for _safe_update to write it
+        states = {"displayStatus": "", **states}
         return MockDevice(1, "Test", plugin_props={"sensorType": sensor_type},
                           states=states)
 

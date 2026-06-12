@@ -68,12 +68,15 @@ Plug/Relay devices carry only: `switchState`, `watts`, `kwh`, `voltage`, `curren
 | `0x71` | NOTIFICATION v4+ | Motion, tamper, intrusion, glass break, door/window, water, smoke, CO, lock/unlock ops (manual/RF/keypad/auto) |
 | `0x62` | DOOR_LOCK | Lock mode, bolt state, latch state (v2+), last user |
 | `0x5B` | CENTRAL_SCENE | Scene number, key action (pressed/released/held/repeated), sequence number |
-| `0x25` | SWITCH_BINARY | On/off relay |
+| `0x25` | SWITCH_BINARY | On/off relay — Report and Set (association groups) |
 | `0x26` | SWITCH_MULTILEVEL | Dimmers (0–99%) |
 | `0x32` | METER | Power (W), energy (kWh/kVAh), voltage (V, Scale2), current (A, Scale2), gas (m3/ft3/ccf), water (m3/ft3/gallons) |
 | `0x80` | BATTERY | Battery level %; 0xFF low warning |
-| `0x20` | BASIC | Legacy on/off |
-| `0x60` | MULTI_CHANNEL | Endpoint encapsulation — unwrapped transparently |
+| `0x20` | BASIC | Legacy on/off — Report and Set (many relays send Basic Set to association groups on input change) |
+| `0x66` | BARRIER_OPERATOR | Garage doors and gates — open/closed/opening/closing/stopped plus position % |
+| `0x60` | MULTI_CHANNEL | Endpoint encapsulation — unwrapped transparently, matches the originating endpoint |
+| `0x6C` | SUPERVISION | Supervision encapsulation (S2-era devices) — unwrapped transparently |
+| `0x56` | CRC-16 | CRC-16 encapsulation — unwrapped transparently |
 | `0x84` | WAKE_UP | Notification touches lastUpdate; interval stored in wakeUpInterval |
 
 ---
@@ -197,6 +200,8 @@ Some multi-sensors (e.g. Aeotec MultiSensor 6) use Z-Wave multi-channel addressi
 
 Leave **Endpoint ID** blank (or set to `0`) to accept reports from all endpoints on the node.
 
+The endpoint filter matches the **originating** endpoint of an incoming report (the device side, not the controller side), so a relay with a wired sensor input on endpoint 2 — the Zooz ZEN5x family, for example — can have its input split out into its own plugin device by setting Endpoint ID to 2.
+
 ---
 
 ## Limitations
@@ -240,6 +245,7 @@ restarts. Defaults to ON.
 
 | Version | Date | Changes |
 |---|---|---|
+| 5.9 | 12-Jun-2026 | Supervision (CC 0x6C) and CRC-16 (CC 0x56) encapsulation now unwrapped transparently — S2-era devices wrap their reports in Supervision and these were previously dropped as unhandled. Endpoint filter now matches the originating endpoint of a report (was the controller-side endpoint, which silently dropped reports from relay sensor inputs such as the Zooz ZEN51/ZEN52/ZEN58 family). BASIC_SET and SWITCH_BINARY_SET handled — devices that report input changes to association groups via Set commands now update states. BARRIER_OPERATOR (CC 0x66) reports decoded — garage doors and gates (GoControl GD00Z and similar) surface open/closed/opening/closing/stopped and position %. Test suite repaired and extended to 127 tests |
 | 5.7 | 23-May-2026 | Millisecond timestamp `[HH:MM:SS.mmm]` prefix on every `self.logger` line via `plugin_utils.install_timestamp_filter()`; new "Toggle Timestamps in Log" menu item |
 | 5.5 | 04-May-2026 | Fix displayStatus state-not-defined error on Plug/Relay devices — all displayStatus writes now route through _safe_update and silently skip device types that do not define that state |
 | 5.4 | 04-May-2026 | Generate Indigo Support Report menu item — dumps manufacturer ID, product type/ID, supported command classes, owner props, and all device states to the Indigo log, formatted for pasting into the Indigo forum; Show Plugin Info menu item added |
