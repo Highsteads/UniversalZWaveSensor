@@ -911,11 +911,16 @@ class TestHandleNotification(unittest.TestCase):
     def test_too_short_returns_false(self):
         self.assertFalse(self.p._handle_notification(self._dev(), [0x71, 0x05, 0x00]))
 
-    def test_unknown_notification_type_returns_false(self):
+    def test_unknown_notification_type_handled_and_captured(self):
+        """CONTRACT FLIP (v5.10): an unknown NOTIFICATION type now returns True
+        after logging its specific line and capturing rawLastReport. It used to
+        return False, which sent it to the generic 'Unhandled CC' fallback and
+        produced a second, near-duplicate log line for the same report."""
         dev = self._dev("generic")
         result = self.p._handle_notification(dev, self._notif(0xAA, 0x01))
-        self.assertFalse(result)
+        self.assertTrue(result)
         self.p.logger.info.assert_called()
+        self.assertIn("rawLastReport", dev.state_writes)
 
 
 class TestHandleBattery(unittest.TestCase):
@@ -1390,6 +1395,170 @@ class TestInitDisplayStatus(unittest.TestCase):
         dev = self._dev("temperature", {"temperature": 22.3, "displayStatus": "detected"})
         self.p._init_display_status(dev)
         self.assertEqual(dev.states["displayStatus"], "22.3 degC")
+
+
+# ==============================================================================
+# v5.10 deep-review regression tests (code-fix batch)
+# ==============================================================================
+
+class TestExtractNotifUserMask(unittest.TestCase):
+    """v5.10: the NOTIFICATION properties byte carries the event-params length
+    in bits [4:0]; the upper bits (Sequence flag + reserved) must be masked
+    before it is used as a length, or a frame with the Sequence flag set and
+    zero params is misread as having a user id."""
+
+    def setUp(self):
+        self.p = make_plugin()
+
+    def test_seq_flag_with_zero_length_reads_no_user(self):
+        # raw[8] = 0x80 (Sequence flag set, length bits = 0) -> no user params.
+        raw = [0x71, 0x05, 0x00, 0x00, 0x00, 0x06, 0xFF, 0x05, 0x80, 0x2A]
+        self.assertIsNone(self.p._extract_notif_user(raw))
+
+    def test_length_one_reads_user(self):
+        # raw[8] = 0x81 (Sequence flag + length 1) -> user id at raw[9].
+        raw = [0x71, 0x05, 0x00, 0x00, 0x00, 0x06, 0xFF, 0x05, 0x81, 0x2A]
+        self.assertEqual(self.p._extract_notif_user(raw), 0x2A)
+
+    def test_user_zero_is_none(self):
+        raw = [0x71, 0x05, 0x00, 0x00, 0x00, 0x06, 0xFF, 0x05, 0x01, 0x00]
+        self.assertIsNone(self.p._extract_notif_user(raw))
+
+
+class TestPlugStateWriteGuards(unittest.TestCase):
+    """v5.10: battery/batteryLow/wakeUpInterval are written via _safe_update so
+    a stray report to the Plug/Relay type (which declares none of them) does
+    not raise a client 'illegal state key' error."""
+
+    def setUp(self):
+        self.p = make_plugin()
+
+    def _plug(self):
+        # Explicit states dict = only the states the Plug type declares.
+        return MockDevice(1, "Plug", address="12",
+                          plugin_props={"sensorType": "plug"},
+                          states={"switchState": False, "onOffState": False,
+                                  "watts": 0, "lastUpdate": ""})
+
+    def test_battery_report_on_plug_does_not_write_battery(self):
+        dev = self._plug()
+        self.p._handle_battery(dev, [0x80, 0x03, 0x55])   # 85%
+        self.assertNotIn("battery", dev.state_writes)
+        self.assertNotIn("batteryLow", dev.state_writes)
+
+    def test_wakeup_interval_on_plug_does_not_write(self):
+        dev = self._plug()
+        self.p._handle_wake_up(dev, 0x06, [0x84, 0x06, 0x00, 0x01, 0x2C, 0x0C])
+        self.assertNotIn("wakeUpInterval", dev.state_writes)
+
+    def test_battery_report_on_sensor_still_writes(self):
+        dev = MockDevice(2, "Motion", address="12",
+                         plugin_props={"sensorType": "motion"})   # PermissiveStates
+        self.p._handle_battery(dev, [0x80, 0x03, 0x55])
+        self.assertEqual(dev.state_writes["battery"]["value"], 85)
+
+
+class TestRunConcurrentThreadIsolation(unittest.TestCase):
+    """v5.10: one exception in a stale-check tick logs-and-continues instead of
+    permanently killing the worker thread."""
+
+    def test_tick_exception_does_not_kill_loop(self):
+        p = make_plugin()
+
+        class _Stop(Exception):
+            pass
+        p.StopThread = _Stop
+
+        calls = {"n": 0}
+        def _boom():
+            calls["n"] += 1
+            raise ValueError("transient")
+        p._check_stale_devices = _boom
+
+        # sleep() runs after the guarded tick; raise StopThread on the 2nd
+        # sleep so we prove the loop survived the first tick's exception.
+        def _sleep(_secs):
+            if calls["n"] >= 2:
+                raise _Stop()
+        p.sleep = _sleep
+
+        p.runConcurrentThread()   # must return cleanly, not propagate ValueError
+        self.assertGreaterEqual(calls["n"], 2)
+        p.logger.error.assert_called()
+
+
+class TestNodeIdCoercion(unittest.TestCase):
+    """v5.10: a node_id delivered as a string is coerced to int so it matches
+    the int-keyed node_to_device map instead of silently dropping reports."""
+
+    def setUp(self):
+        self.p = make_plugin()
+
+    def test_string_node_id_coerced_to_int(self):
+        node_id, raw = self.p._extract_node_and_bytes(
+            {"nodeId": "42", "bytes": [0x30, 0x03, 0xFF]})
+        self.assertEqual(node_id, 42)
+        self.assertIsInstance(node_id, int)
+
+    def test_non_numeric_node_id_becomes_none(self):
+        node_id, _ = self.p._extract_node_and_bytes(
+            {"nodeId": "bad", "bytes": [0x30, 0x03, 0xFF]})
+        self.assertIsNone(node_id)
+
+
+class TestBasicLevelClamp(unittest.TestCase):
+    """v5.10: _handle_basic clamps reserved values 0x64-0xFE to 99, matching
+    the SWITCH_MULTILEVEL handler."""
+
+    def setUp(self):
+        self.p = make_plugin()
+
+    def test_reserved_value_clamped(self):
+        dev = MockDevice(1, "Relay", address="12",
+                         plugin_props={"sensorType": "generic"})
+        self.p._handle_basic(dev, [0x20, 0x03, 0xFE])
+        self.assertEqual(dev.state_writes["dimLevel"]["value"], 99)
+
+    def test_ff_is_on_full(self):
+        dev = MockDevice(1, "Relay", address="12",
+                         plugin_props={"sensorType": "generic"})
+        self.p._handle_basic(dev, [0x20, 0x03, 0xFF])
+        self.assertEqual(dev.state_writes["dimLevel"]["value"], 99)
+
+
+class TestStaleDisableRestores(unittest.TestCase):
+    """v5.10: turning stale detection off restores any device left flagged
+    offline instead of stranding it."""
+
+    def test_disabled_clears_flagged_offline(self):
+        p = make_plugin()
+        p.stale_enabled = False
+        dev = MockDevice(7, "Sensor", address="12",
+                         plugin_props={"sensorType": "motion"})
+        p.stale_device_ids = {7}
+        _indigo.devices = MockDevicesDict({7: dev})
+        p._check_stale_devices()
+        self.assertEqual(dev.state_writes["deviceOnline"]["value"], True)
+        self.assertEqual(p.stale_device_ids, set())
+
+
+class TestNotificationElseBranches(unittest.TestCase):
+    """v5.10: notification branches log an unrecognised event instead of
+    silently returning True with no state change and no log line."""
+
+    def setUp(self):
+        self.p = make_plugin()
+
+    def _notif(self, notif_type, notif_event):
+        return [0x71, 0x05, 0x00, 0x00, 0x00, notif_type, 0xFF, notif_event, 0x00]
+
+    def test_unlisted_smoke_event_logs(self):
+        dev = MockDevice(1, "Smoke", address="12",
+                         plugin_props={"sensorType": "generic"})
+        # NOTIF_SMOKE=0x01, event 0x07 is not mapped -> must log, not go silent.
+        self.assertTrue(self.p._handle_notification(dev, self._notif(0x01, 0x07)))
+        self.p.logger.info.assert_called()
+        self.assertNotIn("smoke", dev.state_writes)
 
 
 # ==============================================================================

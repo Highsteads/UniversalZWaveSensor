@@ -5,9 +5,38 @@
 #              alongside existing Indigo Z-Wave devices, capturing sensor values
 #              (temperature, humidity, contact, etc.) that Indigo does not expose
 #              natively. Uses subscribeToIncoming() to receive ALL Z-Wave bytes.
-# Author:      CliveS & Claude Fable 5
-# Date:        12-06-2026 09:05
-# Version:     5.9
+# Author:      CliveS & Claude Opus 4.8
+# Date:        17-07-2026
+# Version:     5.10
+#
+# v5.10 (17-07-2026) — deep-review CODE-FIX batch:
+# - runConcurrentThread now guards each 60s tick individually — one
+#   exception in _check_stale_devices() logs-and-continues instead of
+#   permanently killing stale detection for the plugin's lifetime.
+# - zwaveCommandReceived snapshots the node's device-id list and wraps each
+#   per-device _route_zwave_report in try/except: a parser error for one
+#   device on a shared node no longer drops the report for the others, and
+#   the check-then-index on the concurrently-mutated node_to_device map can
+#   no longer race to a KeyError.
+# - battery / batteryLow / wakeUpInterval writes routed through _safe_update
+#   so a stray report to the mains-powered Plug/Relay type (which declares
+#   none of them) cannot raise a client "illegal state key" error.
+# - _extract_notif_user masks the NOTIFICATION properties byte with 0x1F —
+#   the event-params length is bits [4:0]; a frame with the Sequence flag
+#   set and zero params was misread as carrying a user id.
+# - Unknown NOTIFICATION types now log once and capture rawLastReport
+#   (return True) instead of falling through to the generic "Unhandled CC"
+#   line and double-logging; each notification branch logs an unrecognised
+#   event instead of silently swallowing it.
+# - Turning stale detection off now restores any device left flagged
+#   offline instead of stranding it showing "offline".
+# - Incoming node_id is coerced to int before the int-keyed map lookup;
+#   _handle_basic clamps reserved dim values 0x64-0xFE to 99; the Plug
+#   Toggle decides from the native onOffState not the shadow switchState.
+# - Retired the 12-line boot banner from __init__ (trimmed-boot convention)
+#   — the full banner is on demand via Show Plugin Info; removed the now
+#   unused `import platform`.
+# - +13 regression tests -> 140.
 #
 # v5.7 (23-05-2026): Millisecond timestamp [HH:MM:SS.mmm] prefix on every
 # log line via plugin_utils.install_timestamp_filter() — matches Device
@@ -33,7 +62,6 @@ import indigo
 import os as _os
 import struct
 import sys
-import platform
 from datetime import datetime, timedelta
 
 sys.path.insert(0, _os.getcwd())
@@ -334,23 +362,10 @@ class Plugin(indigo.PluginBase):
         # deviceStartComm again before the first call returns — this prevents that loop
         self._devices_starting: set[int] = set()
 
-        # Banner logged here in __init__ using raw constructor params — the only reliable
-        # point; PluginBase overwrites self.pluginVersion/pluginDisplayName by startup()
-        title = " Starting Universal Z-Wave Sensor Plugin "
-        width = 110
-        col   = 28
-        self.logger.info("=" * width)
-        self.logger.info(title.center(width, "="))
-        self.logger.info("=" * width)
-        self.logger.info(f"{'Plugin Name:':<{col}} {display_name}")
-        self.logger.info(f"{'Plugin Version:':<{col}} {version}")
-        self.logger.info(f"{'Plugin ID:':<{col}} {plugin_id}")
-        self.logger.info(f"{'Indigo Version:':<{col}} {indigo.server.version}")
-        self.logger.info(f"{'Indigo API Version:':<{col}} {indigo.server.apiVersion}")
-        self.logger.info(f"{'Architecture:':<{col}} {platform.machine()}")
-        self.logger.info(f"{'Python Version:':<{col}} {platform.python_version()}")
-        self.logger.info(f"{'macOS Version:':<{col}} {platform.mac_ver()[0]}")
-        self.logger.info("=" * width)
+        # Trimmed-boot convention (Jay, 25-May-2026): no verbose banner at boot —
+        # Indigo already logs its own "Starting plugin" line and startup() logs
+        # the monitored-node count. The full diagnostic banner is available on
+        # demand via Plugins > Universal Z-Wave Sensor > Show Plugin Info.
 
     # ==========================================================================
     # Plugin lifecycle
@@ -368,10 +383,20 @@ class Plugin(indigo.PluginBase):
         self.logger.info("Universal Z-Wave Sensor plugin stopping")
 
     def runConcurrentThread(self):
-        """60-second tick — checks all plugin devices for stale (silent) condition."""
+        """60-second tick — checks all plugin devices for stale (silent) condition.
+
+        The tick body is individually guarded so one bad iteration (e.g. a
+        device deleted mid-scan, a transient state error) logs-and-continues
+        instead of permanently killing stale detection for the plugin's lifetime.
+        """
         try:
             while True:
-                self._check_stale_devices()
+                try:
+                    self._check_stale_devices()
+                except self.StopThread:
+                    raise
+                except Exception as e:
+                    self.logger.error(f"Stale-check tick failed: {e}", exc_info=True)
                 self.sleep(60)
         except self.StopThread:
             pass
@@ -574,7 +599,9 @@ class Plugin(indigo.PluginBase):
         elif cmd == indigo.kDeviceAction.TurnOff:
             indigo.device.turnOff(source_id)
         elif cmd == indigo.kDeviceAction.Toggle:
-            if device.states.get("switchState"):
+            # Decide from the native onOffState (the relay's real state) rather
+            # than the shadow switchState mirror, which can lag or be absent.
+            if device.onState:
                 indigo.device.turnOff(source_id)
             else:
                 indigo.device.turnOn(source_id)
@@ -652,14 +679,18 @@ class Plugin(indigo.PluginBase):
         if node_id is None or len(raw) < 2:
             return
 
-        if node_id not in self.node_to_device:
+        # Snapshot the device-id list up front — node_to_device is mutated by
+        # deviceStartComm/StopComm on another thread, so a check-then-index on
+        # the live dict can race (KeyError / list shrinking mid-iteration).
+        device_ids = list(self.node_to_device.get(node_id, ()))
+        if not device_ids:
             return   # not one of our monitored nodes
 
         cmd_class = raw[0]
         cmd_func  = raw[1]
         hex_str   = " ".join(f"{b:02X}" for b in raw)
 
-        for device_id in self.node_to_device[node_id]:
+        for device_id in device_ids:
             try:
                 device = indigo.devices[device_id]
             except KeyError:
@@ -674,7 +705,15 @@ class Plugin(indigo.PluginBase):
                     f"CC=0x{cmd_class:02X} func=0x{cmd_func:02X} [{hex_str}]"
                 )
 
-            self._route_zwave_report(device, node_id, cmd_class, cmd_func, raw, hex_str)
+            # Per-device isolation: a parser exception for one device on a
+            # shared node must not drop the report for the other devices.
+            try:
+                self._route_zwave_report(device, node_id, cmd_class, cmd_func, raw, hex_str)
+            except Exception as e:
+                self.logger.error(
+                    f"{device.name} [Node {node_id}]: report handler failed: {e}",
+                    exc_info=True,
+                )
 
     def _route_zwave_report(self, device, node_id, cmd_class, cmd_func, raw, hex_str):
         """Dispatch one Z-Wave report to the correct parser for a single plugin device."""
@@ -1071,6 +1110,8 @@ class Plugin(indigo.PluginBase):
                 self._safe_update(device, "waterLeak",     value=False, uiValue="clear")
                 device.updateStateOnServer("onOffState",    value=False)
                 self._safe_update(device, "displayStatus", value="clear")
+            else:
+                self.logger.info(f"{device.name}: WATER event=0x{notif_event:02X} (no state mapping)")
             self._touch(device)
             return True
 
@@ -1085,6 +1126,8 @@ class Plugin(indigo.PluginBase):
                 self._safe_update(device, "smoke",         value=False, uiValue="clear")
                 device.updateStateOnServer("onOffState",    value=False)
                 self._safe_update(device, "displayStatus", value="clear")
+            else:
+                self.logger.info(f"{device.name}: SMOKE event=0x{notif_event:02X} (no state mapping)")
             self._touch(device)
             return True
 
@@ -1099,6 +1142,8 @@ class Plugin(indigo.PluginBase):
                 self._safe_update(device, "coAlarm",       value=False, uiValue="clear")
                 device.updateStateOnServer("onOffState",    value=False)
                 self._safe_update(device, "displayStatus", value="clear")
+            else:
+                self.logger.info(f"{device.name}: CO event=0x{notif_event:02X} (no state mapping)")
             self._touch(device)
             return True
 
@@ -1106,7 +1151,7 @@ class Plugin(indigo.PluginBase):
             if notif_event in (PM_REPLACE_BATTERY, PM_REPLACE_BATTERY_NOW):
                 urgency = "now" if notif_event == PM_REPLACE_BATTERY_NOW else "soon"
                 self.logger.warning(f"{device.name}: Battery — replace {urgency}")
-                device.updateStateOnServer("batteryLow", value=True)
+                self._safe_update(device, "batteryLow", value=True)
             elif notif_event == PM_AC_DISCONNECTED:
                 self.logger.warning(f"{device.name}: AC mains DISCONNECTED")
                 device.updateStateOnServer("onOffState",    value=False)
@@ -1182,6 +1227,8 @@ class Plugin(indigo.PluginBase):
                 self._safe_update(device, "sirenActive",   value=False, uiValue="silent")
                 device.updateStateOnServer("onOffState",    value=False)
                 self._safe_update(device, "displayStatus", value="silent")
+            else:
+                self.logger.info(f"{device.name}: SIREN event=0x{notif_event:02X} (no state mapping)")
             self._touch(device)
             return True
 
@@ -1199,6 +1246,8 @@ class Plugin(indigo.PluginBase):
                 self.logger.info(f"{device.name}: Water valve idle")
                 self._safe_update(device, "valveOpen",     value=False, uiValue="idle")
                 self._safe_update(device, "displayStatus", value="valve idle")
+            else:
+                self.logger.info(f"{device.name}: WATER_VALVE event=0x{notif_event:02X} (no state mapping)")
             self._touch(device)
             return True
 
@@ -1213,6 +1262,8 @@ class Plugin(indigo.PluginBase):
                 self._safe_update(device, "gasLeak",       value=False, uiValue="clear")
                 device.updateStateOnServer("onOffState",    value=False)
                 self._safe_update(device, "displayStatus", value="clear")
+            else:
+                self.logger.info(f"{device.name}: GAS event=0x{notif_event:02X} (no state mapping)")
             self._touch(device)
             return True
 
@@ -1234,13 +1285,19 @@ class Plugin(indigo.PluginBase):
             self._touch(device)
             return True
 
-        # Unknown notification type — log for investigation
+        # Unknown notification type — log for investigation. Capture the raw
+        # bytes here and return True: the specific line above is more useful
+        # than the generic "Unhandled CC" fallback, which would otherwise log
+        # a second, near-duplicate line for the same report.
         type_name = NOTIF_TYPE_NAMES.get(notif_type, f"0x{notif_type:02X}")
         self.logger.info(
             f"{device.name}: NOTIFICATION {type_name} "
             f"status=0x{notif_status:02X} event=0x{notif_event:02X} (unhandled)"
         )
-        return False
+        self._safe_update(device, "rawLastReport",
+                          value=" ".join(f"{b:02X}" for b in raw))
+        self._touch(device)
+        return True
 
     def _handle_battery(self, device, raw) -> bool:
         """
@@ -1265,8 +1322,11 @@ class Plugin(indigo.PluginBase):
             ui_str = f"{level}%"
             self.logger.info(f"{device.name}: Battery = {level}%")
 
-        device.updateStateOnServer("battery", value=level, uiValue=ui_str)
-        device.updateStateOnServer("batteryLow",   value=is_low)
+        # _safe_update: the Plug/Relay type does not declare battery/batteryLow
+        # (mains-powered), so a stray BATTERY report to a plug would otherwise
+        # raise a client "illegal state key" error.
+        self._safe_update(device, "battery", value=level, uiValue=ui_str)
+        self._safe_update(device, "batteryLow", value=is_low)
 
         dev_type = self._sensor_type(device)
         if dev_type == "battery":
@@ -1408,7 +1468,10 @@ class Plugin(indigo.PluginBase):
             return False
 
         raw_val = raw[2]
-        level   = 99 if raw_val == 0xFF else raw_val
+        # 0x00 = off, 0x01-0x63 = level, 0xFF = on(full). 0x64-0xFE are
+        # reserved — clamp to 99 like the SWITCH_MULTILEVEL handler rather
+        # than storing an out-of-range dim level.
+        level   = 99 if raw_val == 0xFF else min(raw_val, 99)
         is_on   = level > 0
         label   = "on" if is_on else "off"
         verb    = "set" if raw[1] == CMD_BASIC_SET else "report"
@@ -1474,7 +1537,8 @@ class Plugin(indigo.PluginBase):
             seconds  = interval % 60
             ui_str   = f"{minutes}m {seconds}s" if minutes else f"{interval}s"
             self.logger.info(f"{device.name}: Wake-up interval = {interval}s ({ui_str})")
-            device.updateStateOnServer("wakeUpInterval", value=interval, uiValue=ui_str)
+            # _safe_update: Plug/Relay type does not declare wakeUpInterval.
+            self._safe_update(device, "wakeUpInterval", value=interval, uiValue=ui_str)
             self._touch(device)
             return True
 
@@ -1692,6 +1756,13 @@ class Plugin(indigo.PluginBase):
         deviceOnline=True when any report arrives.
         """
         if not self.stale_enabled:
+            # Detection turned off — clear any devices left flagged offline so
+            # they aren't stranded showing "offline" forever.
+            if self.stale_device_ids:
+                for dev in indigo.devices.iter("self"):
+                    if dev.id in self.stale_device_ids:
+                        dev.updateStateOnServer("deviceOnline", value=True, uiValue="online")
+                self.stale_device_ids.clear()
             return
 
         threshold = timedelta(hours=self.stale_hours)
@@ -1829,6 +1900,15 @@ class Plugin(indigo.PluginBase):
                   cmd.get("sourceNodeId",
                   cmd.get("node_id", None)))
 
+        # node_to_device is int-keyed (from int(nodeId)); coerce here so a
+        # node_id delivered as a string still matches the map instead of
+        # silently dropping every report for that node.
+        if node_id is not None:
+            try:
+                node_id = int(node_id)
+            except (TypeError, ValueError):
+                node_id = None
+
         raw = list(cmd.get("bytes",
                cmd.get("cmdBytes",
                cmd.get("rawBytes", []))))
@@ -1846,12 +1926,15 @@ class Plugin(indigo.PluginBase):
     def _extract_notif_user(self, raw) -> int | None:
         """
         Extract user slot ID from a NOTIFICATION_REPORT event params field.
-        Frame layout: [..., notif_event, event_params_len, event_param_1, ...]
-        raw[7]=event, raw[8]=params_len, raw[9]=user_id (if params_len >= 1).
+        Frame layout: [..., notif_event, properties, event_param_1, ...]
+        raw[7]=event, raw[8]=properties, raw[9]=user_id (if params_len >= 1).
+        The properties byte carries the event-params length in bits [4:0]; the
+        upper bits are the Sequence Number flag + reserved and must be masked
+        off before using it as a length.
         Returns None if no event params are present.
         User 0 = no user / unknown; 251 = master code; 1-250 = regular slots.
         """
-        if len(raw) >= 10 and raw[8] >= 1:
+        if len(raw) >= 10 and (raw[8] & 0x1F) >= 1:
             user_id = raw[9]
             return user_id if user_id > 0 else None
         return None
