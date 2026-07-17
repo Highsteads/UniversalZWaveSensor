@@ -1562,6 +1562,332 @@ class TestNotificationElseBranches(unittest.TestCase):
 
 
 # ==============================================================================
+# v5.11 deep-review TEST-BUILDOUT batch (no code change — fills high/medium
+# test-gaps the review flagged: door lock, plug control, node-map lifecycle,
+# thermostat setpoint, central scene, lock-via-notification, notification
+# branches, triple-nested encapsulation)
+# ==============================================================================
+
+class TestHandleDoorLock(unittest.TestCase):
+    """DOOR_LOCK_OPERATION_REPORT (CC=0x62 CMD=0x03) — security-relevant decode."""
+
+    def setUp(self):
+        self.p = make_plugin()
+
+    def _dev(self):
+        return MockDevice(1, "Front Door Lock", address="20",
+                          plugin_props={"sensorType": "lock"})
+
+    def test_secured_mode_locked(self):
+        dev = self._dev()
+        self.assertTrue(self.p._handle_door_lock(dev, [0x62, 0x03, 0xFF]))
+        self.assertTrue(dev.state_writes["lockState"]["value"])
+        self.assertTrue(dev.state_writes["onOffState"]["value"])
+        self.assertEqual(dev.state_writes["displayStatus"]["value"], "locked")
+
+    def test_unsecured_mode_unlocked(self):
+        dev = self._dev()
+        self.p._handle_door_lock(dev, [0x62, 0x03, 0x00])
+        self.assertFalse(dev.state_writes["lockState"]["value"])
+        self.assertFalse(dev.state_writes["onOffState"]["value"])
+        self.assertEqual(dev.state_writes["displayStatus"]["value"], "unlocked")
+
+    def test_v2_door_condition_bolt_and_latch_open(self):
+        # door_condition 0x06 = bit1 (bolt unlocked) + bit2 (latch open) set.
+        dev = self._dev()
+        self.p._handle_door_lock(dev, [0x62, 0x03, 0xFF, 0x00, 0x06, 0, 0])
+        self.assertFalse(dev.state_writes["boltState"]["value"])   # bolt NOT locked
+        self.assertFalse(dev.state_writes["latchState"]["value"])  # latch NOT closed
+
+    def test_v2_door_condition_bolt_locked_latch_closed(self):
+        # door_condition 0x00 = both bits clear -> bolt locked, latch closed.
+        dev = self._dev()
+        self.p._handle_door_lock(dev, [0x62, 0x03, 0xFF, 0x00, 0x00, 0, 0])
+        self.assertTrue(dev.state_writes["boltState"]["value"])
+        self.assertTrue(dev.state_writes["latchState"]["value"])
+
+    def test_too_short_returns_false(self):
+        self.assertFalse(self.p._handle_door_lock(self._dev(), [0x62, 0x03]))
+
+
+class TestActionControlDevice(unittest.TestCase):
+    """Plug/Relay on/off/toggle delegation to the native source device."""
+
+    def setUp(self):
+        self.p = make_plugin()
+        _indigo.device.reset_mock()
+        _indigo.kDeviceAction.TurnOn  = "TurnOn"
+        _indigo.kDeviceAction.TurnOff = "TurnOff"
+        _indigo.kDeviceAction.Toggle  = "Toggle"
+        # source device 30 must exist for the not-found guard to pass
+        _indigo.devices = MockDevicesDict({30: MockDevice(30, "Native", address="12")})
+
+    def _plug(self, on_state=False, source="30"):
+        return MockDevice(1, "Plug", address="12", on_state=on_state,
+                          plugin_props={"sensorType": "plug", "sourceDeviceId": source})
+
+    def _action(self, cmd):
+        a = MagicMock()
+        a.deviceAction = cmd
+        return a
+
+    def test_turn_on_delegates(self):
+        self.p.actionControlDevice(self._action("TurnOn"), self._plug())
+        _indigo.device.turnOn.assert_called_once_with(30)
+
+    def test_turn_off_delegates(self):
+        self.p.actionControlDevice(self._action("TurnOff"), self._plug())
+        _indigo.device.turnOff.assert_called_once_with(30)
+
+    def test_toggle_when_on_turns_off(self):
+        self.p.actionControlDevice(self._action("Toggle"), self._plug(on_state=True))
+        _indigo.device.turnOff.assert_called_once_with(30)
+
+    def test_toggle_when_off_turns_on(self):
+        self.p.actionControlDevice(self._action("Toggle"), self._plug(on_state=False))
+        _indigo.device.turnOn.assert_called_once_with(30)
+
+    def test_non_plug_warns_and_does_nothing(self):
+        dev = MockDevice(2, "Motion", address="12",
+                         plugin_props={"sensorType": "motion"})
+        self.p.actionControlDevice(self._action("TurnOn"), dev)
+        _indigo.device.turnOn.assert_not_called()
+        self.p.logger.warning.assert_called()
+
+    def test_blank_source_errors_and_does_nothing(self):
+        self.p.actionControlDevice(self._action("TurnOn"), self._plug(source=""))
+        _indigo.device.turnOn.assert_not_called()
+        self.p.logger.error.assert_called()
+
+
+class TestNodeMapLifecycle(unittest.TestCase):
+    """deviceStartComm / deviceStopComm build and tear down node_to_device."""
+
+    def setUp(self):
+        self.p = make_plugin()
+        self.p.node_to_device = {}
+        self.p._devices_starting = set()
+        self.devs = MockDevicesDict()
+        _indigo.devices = self.devs
+
+    def _dev(self, dev_id, node="42"):
+        d = MockDevice(dev_id, f"Dev{dev_id}", address=node,
+                       plugin_props={"sensorType": "motion", "nodeId": node})
+        self.devs[dev_id] = d
+        return d
+
+    def test_start_adds_int_keyed_entry(self):
+        self.p.deviceStartComm(self._dev(101))
+        self.assertIn(42, self.p.node_to_device)
+        self.assertIsInstance(list(self.p.node_to_device.keys())[0], int)
+        self.assertEqual(self.p.node_to_device[42], [101])
+
+    def test_two_devices_share_one_node(self):
+        self.p.deviceStartComm(self._dev(101))
+        self.p.deviceStartComm(self._dev(102))
+        self.assertEqual(sorted(self.p.node_to_device[42]), [101, 102])
+
+    def test_stop_removes_and_deletes_empty(self):
+        self.p.deviceStartComm(self._dev(101))
+        self.p.deviceStartComm(self._dev(102))
+        self.p.deviceStopComm(self.devs[101])
+        self.assertEqual(self.p.node_to_device[42], [102])
+        self.p.deviceStopComm(self.devs[102])
+        self.assertNotIn(42, self.p.node_to_device)
+
+    def test_reentry_guard_blocks_double_add(self):
+        dev = self._dev(101)
+        self.p._devices_starting = {101}      # pretend a start is already in progress
+        self.p.deviceStartComm(dev)
+        self.assertNotIn(42, self.p.node_to_device)   # returned early, no append
+
+
+class TestHandleThermostatSetpoint(unittest.TestCase):
+    """THERMOSTAT_SETPOINT_REPORT (CC=0x43 CMD=0x03)."""
+
+    def _dev(self):
+        return MockDevice(1, "Stat", address="12",
+                          plugin_props={"sensorType": "generic"})
+
+    def test_heat_setpoint_celsius(self):
+        p = make_plugin(temp_unit="degC")
+        # sp_type=0x01 heat, prec=1 scale=0(C) size=2 -> 0x22; value 215 -> 21.5
+        dev = self._dev()
+        self.assertTrue(p._handle_thermostat_setpoint(dev, [0x43, 0x03, 0x01, 0x22, 0x00, 0xD7]))
+        self.assertAlmostEqual(dev.state_writes["thermostatSetpoint"]["value"], 21.5)
+        self.assertEqual(dev.state_writes["thermostatSetpointType"]["value"], "heat")
+
+    def test_fahrenheit_converted_to_celsius(self):
+        p = make_plugin(temp_unit="degC")
+        # scale=1 (F), value 68.0F -> 20.0C. prec=1 size=2 scale=1 -> (1<<5)|(1<<3)|2 = 0x2A
+        dev = self._dev()
+        p._handle_thermostat_setpoint(dev, [0x43, 0x03, 0x01, 0x2A, 0x02, 0xA8])  # 680 -> 68.0F
+        self.assertAlmostEqual(dev.state_writes["thermostatSetpoint"]["value"], 20.0, places=1)
+
+    def test_too_short_returns_false(self):
+        self.assertFalse(make_plugin()._handle_thermostat_setpoint(self._dev(), [0x43, 0x03, 0x01]))
+
+
+class TestHandleCentralScene(unittest.TestCase):
+    """CENTRAL_SCENE_NOTIFICATION (CC=0x5B CMD=0x03)."""
+
+    def setUp(self):
+        self.p = make_plugin()
+
+    def _dev(self):
+        return MockDevice(1, "WallMote", address="12",
+                          plugin_props={"sensorType": "scene"})
+
+    def test_scene_1_pressed(self):
+        dev = self._dev()
+        self.assertTrue(self.p._handle_central_scene(dev, [0x5B, 0x03, 0x01, 0x00, 0x01]))
+        self.assertEqual(dev.state_writes["lastScene"]["value"], 1)
+        self.assertEqual(dev.state_writes["lastSceneAction"]["value"], "pressed")
+        self.assertTrue(dev.state_writes["onOffState"]["value"])
+
+    def test_scene_2_double_press(self):
+        dev = self._dev()
+        self.p._handle_central_scene(dev, [0x5B, 0x03, 0x02, 0x03, 0x02])
+        self.assertEqual(dev.state_writes["lastScene"]["value"], 2)
+        self.assertEqual(dev.state_writes["lastSceneAction"]["value"], "double")
+
+    def test_key_released_sets_off(self):
+        dev = self._dev()
+        self.p._handle_central_scene(dev, [0x5B, 0x03, 0x03, 0x01, 0x01])  # released
+        self.assertFalse(dev.state_writes["onOffState"]["value"])
+
+    def test_slow_refresh_bit_stripped(self):
+        dev = self._dev()
+        # key_attr 0x80 | 0x00 = pressed with slow-refresh bit set
+        self.p._handle_central_scene(dev, [0x5B, 0x03, 0x01, 0x80, 0x01])
+        self.assertEqual(dev.state_writes["lastSceneAction"]["value"], "pressed")
+
+
+class TestLockViaNotification(unittest.TestCase):
+    """ACCESS_CONTROL lock/unlock events via NOTIFICATION with user ids."""
+
+    def setUp(self):
+        self.p = make_plugin()
+
+    def _dev(self):
+        return MockDevice(1, "Lock", address="12",
+                          plugin_props={"sensorType": "lock"})
+
+    def test_rf_lock_with_user(self):
+        # reversed byte order: raw[5]=type 0x06, raw[6]=status 0xFF, raw[7]=event 0x03 (RF lock)
+        # raw[8]=properties 0x01 (len 1), raw[9]=user 5
+        raw = [0x71, 0x05, 0x00, 0x00, 0x00, 0x06, 0xFF, 0x03, 0x01, 0x05]
+        dev = self._dev()
+        self.assertTrue(self.p._handle_notification(dev, raw))
+        self.assertTrue(dev.state_writes["lockState"]["value"])
+        self.assertEqual(dev.state_writes["lastUser"]["value"], 5)
+
+    def test_keypad_unlock(self):
+        raw = [0x71, 0x05, 0x00, 0x00, 0x00, 0x06, 0xFF, 0x06, 0x00]  # keypad unlock, no user
+        dev = self._dev()
+        self.p._handle_notification(dev, raw)
+        self.assertFalse(dev.state_writes["lockState"]["value"])
+
+    def test_lock_jammed_warns(self):
+        raw = [0x71, 0x05, 0x00, 0x00, 0x00, 0x06, 0xFF, 0x0B, 0x00]  # jammed
+        dev = self._dev()
+        self.p._handle_notification(dev, raw)
+        self.assertEqual(dev.state_writes["displayStatus"]["value"], "jammed")
+        self.p.logger.warning.assert_called()
+
+
+class TestNotificationBranches(unittest.TestCase):
+    """POWER_MANAGEMENT / HEAT / SYSTEM / SIREN / GAS / WATER_VALVE branches."""
+
+    def setUp(self):
+        self.p = make_plugin()
+
+    def _dev(self):
+        return MockDevice(1, "Dev", address="12",
+                          plugin_props={"sensorType": "generic"})
+
+    def _notif(self, ntype, event, status=0xFF):
+        return [0x71, 0x05, 0x00, 0x00, 0x00, ntype, status, event, 0x00]
+
+    def test_power_replace_battery_now(self):
+        dev = self._dev()
+        self.p._handle_notification(dev, self._notif(0x08, 0x0B))  # replace battery now
+        self.assertTrue(dev.state_writes["batteryLow"]["value"])
+
+    def test_heat_over_temperature(self):
+        dev = self._dev()
+        self.p._handle_notification(dev, self._notif(0x04, 0x02))
+        self.assertTrue(dev.state_writes["heatAlarm"]["value"])
+        self.assertEqual(dev.state_writes["displayStatus"]["value"], "hot")
+
+    def test_siren_active(self):
+        dev = self._dev()
+        self.p._handle_notification(dev, self._notif(0x0E, 0x01))
+        self.assertTrue(dev.state_writes["sirenActive"]["value"])
+        self.assertTrue(dev.state_writes["onOffState"]["value"])
+
+    def test_gas_leak(self):
+        dev = self._dev()
+        self.p._handle_notification(dev, self._notif(0x12, 0x02))
+        self.assertTrue(dev.state_writes["gasLeak"]["value"])
+
+    def test_water_valve_operating(self):
+        dev = self._dev()
+        self.p._handle_notification(dev, self._notif(0x0F, 0x01))
+        self.assertTrue(dev.state_writes["valveOpen"]["value"])
+
+    def test_system_hardware_failure_warns(self):
+        dev = self._dev()
+        self.p._handle_notification(dev, self._notif(0x09, 0x01))
+        self.assertEqual(dev.state_writes["displayStatus"]["value"], "hardware failure")
+
+
+class TestTripleNestedEncapsulation(unittest.TestCase):
+    """CRC-16 > Multi-Channel > Supervision wrapping a report — all three
+    layers peeled in one pass (the spec's maximum nesting)."""
+
+    def setUp(self):
+        self.p = make_plugin()
+
+    def test_crc16_multichannel_supervision_nest(self):
+        inner = [0x30, 0x03, 0xFF, 0x08]          # SENSOR_BINARY motion active
+        sup   = [0x6C, 0x01, 0x2A, len(inner)] + inner
+        mc    = [0x60, 0x0D, 0x01, 0x00] + sup    # src_ep=1
+        crc   = [0x56, 0x01] + mc + [0xAB, 0xCD]
+        dev = MockDevice(1, "Motion", address="12",
+                         plugin_props={"sensorType": "motion", "endpointId": ""})
+        self.p._route_zwave_report(dev, 12, crc[0], crc[1], crc, "")
+        self.assertTrue(dev.state_writes["motion"]["value"])
+
+
+class TestBatteryThresholdAndLuminanceScale(unittest.TestCase):
+    """Battery <=20% low flag + sensorType=battery branch, luminance scale=0 (%)."""
+
+    def test_battery_at_threshold_is_low(self):
+        p = make_plugin()
+        dev = MockDevice(1, "Batt", address="12",
+                         plugin_props={"sensorType": "battery"})
+        p._handle_battery(dev, [0x80, 0x03, 0x14])   # 20%
+        self.assertTrue(dev.state_writes["batteryLow"]["value"])
+        self.assertFalse(dev.state_writes["onOffState"]["value"])  # battery type: online=not low
+
+    def test_battery_above_threshold_not_low(self):
+        p = make_plugin()
+        dev = MockDevice(1, "Batt", address="12",
+                         plugin_props={"sensorType": "battery"})
+        p._handle_battery(dev, [0x80, 0x03, 0x15])   # 21%
+        self.assertFalse(dev.state_writes["batteryLow"]["value"])
+
+    def test_luminance_scale_zero_is_percent(self):
+        p = make_plugin()
+        dev = MockDevice(1, "Lux", address="12",
+                         plugin_props={"sensorType": "luminance"})
+        # SENSOR_MULTILEVEL type 0x03 luminance, scale=0 -> percent. prec=0 size=1 -> 0x01, value 50
+        p._handle_multilevel(dev, [0x31, 0x05, 0x03, 0x01, 0x32])
+        self.assertIn("%", dev.state_writes["displayStatus"]["value"])
+
+
+# ==============================================================================
 # Entry point
 # ==============================================================================
 

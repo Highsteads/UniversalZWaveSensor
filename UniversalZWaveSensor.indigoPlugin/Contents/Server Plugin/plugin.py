@@ -7,7 +7,17 @@
 #              natively. Uses subscribeToIncoming() to receive ALL Z-Wave bytes.
 # Author:      CliveS & Claude Opus 4.8
 # Date:        17-07-2026
-# Version:     5.10
+# Version:     5.11
+#
+# v5.11 (17-07-2026) — deep-review TEST-BUILDOUT batch (no code change):
+# Filled the review's high/medium test-gaps with 35 new tests — DOOR_LOCK
+# decode + v2 door_condition bolt/latch bitmask, actionControlDevice plug
+# on/off/toggle delegation + guards, node_to_device add/remove lifecycle +
+# re-entry guard + int-keying, THERMOSTAT_SETPOINT decode/conversion,
+# CENTRAL_SCENE key attributes + slow-refresh bit, lock-via-NOTIFICATION with
+# user ids, the POWER_MGMT/HEAT/SYSTEM/SIREN/GAS/WATER_VALVE branches, triple-
+# nested CRC-16>Multi-Channel>Supervision encapsulation, and the battery
+# low-threshold + luminance scale=0 paths. Suite 140 -> 175.
 #
 # v5.10 (17-07-2026) — deep-review CODE-FIX batch:
 # - runConcurrentThread now guards each 60s tick individually — one
