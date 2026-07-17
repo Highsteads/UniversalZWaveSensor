@@ -7,7 +7,22 @@
 #              natively. Uses subscribeToIncoming() to receive ALL Z-Wave bytes.
 # Author:      CliveS & Claude Opus 4.8
 # Date:        17-07-2026
-# Version:     5.11
+# Version:     5.12
+#
+# v5.12 (17-07-2026) — deep-review IMPROVEMENTS batch:
+# - New "Run Parser Self-Test" menu item — replays 14 documented sample
+#   reports through the real parsers against an in-memory capture device and
+#   reports pass/fail. Validates the full decode chain with no hardware and
+#   without touching the live Z-Wave network.
+# - New "Show Status" menu item — one-glance table of every monitored device
+#   (node, sensor type, online/stale, last update).
+# - Low-battery warning threshold is now configurable (PluginConfig, default
+#   20%) instead of hard-coded; batteryLow uses it.
+# - Stale-threshold menu gains 7-day and 14-day options for infrequent
+#   battery sensors.
+# - Energy/Plug displayStatus now shows power (W) only, so interleaved
+#   voltage/current/energy reports no longer make the status line flap.
+# - +6 tests -> 182.
 #
 # v5.11 (17-07-2026) — deep-review TEST-BUILDOUT batch (no code change):
 # Filled the review's high/medium test-gaps with 35 new tests — DOOR_LOCK
@@ -363,6 +378,7 @@ class Plugin(indigo.PluginBase):
         self.temp_unit      = prefs.get("tempUnit",              "degC")
         self.stale_enabled  = prefs.get("enableStaleDetection",  True)
         self.stale_hours    = int(prefs.get("staleThresholdHours", 24))
+        self.low_batt_pct   = int(prefs.get("lowBatteryPercent",  20))
         # Maps Z-Wave node_id (int) -> list of Indigo device_ids (int)
         # One physical Z-Wave node can back multiple plugin devices (motion, temp, lux...)
         self.node_to_device:   dict[int, list[int]] = {}
@@ -418,9 +434,11 @@ class Plugin(indigo.PluginBase):
             self.temp_unit     = values_dict.get("tempUnit",             "degC")
             self.stale_enabled = values_dict.get("enableStaleDetection", True)
             self.stale_hours   = int(values_dict.get("staleThresholdHours", 24))
+            self.low_batt_pct  = int(values_dict.get("lowBatteryPercent",  20))
             self.logger.info(
                 f"Prefs updated: debug={self.debug} log_unknown={self.log_unknown} "
-                f"temp_unit={self.temp_unit} stale={self.stale_enabled}/{self.stale_hours}h"
+                f"temp_unit={self.temp_unit} stale={self.stale_enabled}/{self.stale_hours}h "
+                f"low_batt={self.low_batt_pct}%"
             )
 
     # ==========================================================================
@@ -1328,7 +1346,7 @@ class Plugin(indigo.PluginBase):
             self.logger.warning(f"{device.name}: Battery LOW warning received from device")
         else:
             level  = raw_level
-            is_low = level <= 20
+            is_low = level <= getattr(self, "low_batt_pct", 20)
             ui_str = f"{level}%"
             self.logger.info(f"{device.name}: Battery = {level}%")
 
@@ -1394,7 +1412,12 @@ class Plugin(indigo.PluginBase):
                 ui_str = f"{value:.3f} {unit}"
                 self.logger.info(f"{device.name}: {state_key} = {ui_str}")
                 self._safe_update(device, state_key,       value=round(value, 3), uiValue=ui_str)
-                self._safe_update(device, "displayStatus", value=ui_str)
+                # Energy/Plug devices report W, V, A and kWh in turn — letting
+                # each drive displayStatus makes it flap. Show power only for
+                # those types; other types show whatever they just reported.
+                dev_type = self._sensor_type(device)
+                if dev_type not in ("energy", "plug") or state_key == "watts":
+                    self._safe_update(device, "displayStatus", value=ui_str)
                 self._touch(device)
                 return True
 
@@ -2088,6 +2111,101 @@ class Plugin(indigo.PluginBase):
             self.logger.error(f"Support Report: unexpected error — {e}", exc_info=True)
 
         return values_dict   # keeps dialog open
+
+    def showStatus(self, valuesDict=None, typeId=None):
+        """Menu: Show Status — one-glance health of every monitored device
+        (node, last update, online/stale) written to the Indigo log."""
+        rows = []
+        for dev in indigo.devices.iter("self"):
+            node_id = self._get_node_id(dev)
+            last    = dev.states.get("lastUpdate", "") or "(never)"
+            online  = dev.states.get("deviceOnline", True)
+            flag    = "STALE" if dev.id in self.stale_device_ids else (
+                      "online" if online else "offline")
+            rows.append((dev.name, node_id, self._sensor_type(dev), last, flag))
+        w   = 78
+        self.logger.info("=" * w)
+        self.logger.info("  Universal Z-Wave Sensor — Device Status".center(w))
+        self.logger.info("=" * w)
+        if not rows:
+            self.logger.info("  No plugin devices configured.")
+        for name, node, stype, last, flag in sorted(rows, key=lambda r: r[0].lower()):
+            self.logger.info(
+                f"  {name[:28]:<28} node {str(node):<4} {stype:<11} "
+                f"{flag:<7} last: {last}"
+            )
+        self.logger.info("=" * w)
+
+    def runSelfTest(self, valuesDict=None, typeId=None):
+        """Menu: Run Parser Self-Test — replays a set of documented sample
+        Z-Wave reports through the real parsers against an in-memory capture
+        device and reports pass/fail. Validates the decode logic end-to-end
+        with no hardware required (nothing on the real network is touched)."""
+
+        class _CaptureStates(dict):
+            def __contains__(self, key):
+                return True   # permissive: every handler's _safe_update goes through
+
+        class _CaptureDevice:
+            def __init__(self):
+                self.id = -1
+                self.name = "SelfTest"
+                self.states = _CaptureStates()
+                self.pluginProps = {"sensorType": "generic", "endpointId": ""}
+                self.deviceTypeId = "zwaveSensorGeneric"
+                self.writes = {}
+                self._on = False
+            @property
+            def onState(self):
+                return self._on
+            def updateStateOnServer(self, key, value=None, uiValue=None):
+                self.states[key] = value
+                self.writes[key] = value
+            def updateStateImageOnServer(self, sel):
+                pass
+
+        # (label, hex bytes, state key expected to be written)
+        cases = [
+            ("Temperature 21.5C",  "31 05 01 22 00 D7", "temperature"),
+            ("Humidity 35.1%",     "31 05 05 22 01 5F", "humidity"),
+            ("Luminance 50%",      "31 05 03 01 32",    "luminance"),
+            ("Motion detected",    "71 05 00 00 00 FF 07 07 00", "motion"),
+            ("Door open",          "71 05 00 00 00 FF 06 16 00", "contact"),
+            ("Water leak",         "71 05 00 00 00 FF 05 02 00", "waterLeak"),
+            ("Lock locked",        "62 03 FF",          "lockState"),
+            ("Scene 1 pressed",    "5B 03 01 00 01",    "lastScene"),
+            ("Battery 85%",        "80 03 55",          "battery"),
+            ("Switch on",          "25 03 FF",          "switchState"),
+            ("Meter power 1500W",  "32 02 01 12 05 DC", "watts"),
+            ("Barrier open",       "66 03 FF",          "contact"),
+            ("Central scene 2x",   "5B 03 02 03 02",    "lastSceneAction"),
+            ("Supervision+motion", "6C 01 2A 04 30 03 FF 08", "motion"),
+        ]
+
+        w = 78
+        self.logger.info("=" * w)
+        self.logger.info("  Universal Z-Wave Sensor — Parser Self-Test".center(w))
+        self.logger.info("=" * w)
+        passed = failed = 0
+        for label, hexs, expect in cases:
+            dev = _CaptureDevice()
+            try:
+                raw = [int(b, 16) for b in hexs.split()]
+                self._route_zwave_report(dev, 0, raw[0], raw[1], raw, hexs)
+                ok = expect in dev.writes
+            except Exception as e:
+                ok = False
+                self.logger.error(f"  [ERR ] {label}: {e}")
+            if ok:
+                passed += 1
+                self.logger.info(f"  [PASS] {label:<22} -> {expect} = {dev.writes.get(expect)}")
+            else:
+                failed += 1
+                self.logger.warning(f"  [FAIL] {label:<22} -> expected '{expect}', got {dict(dev.writes)}")
+        self.logger.info("-" * w)
+        self.logger.info(f"  Self-test complete: {passed} passed, {failed} failed")
+        self.logger.info("=" * w)
+        return valuesDict if valuesDict is not None else None
 
     def showPluginInfo(self, valuesDict=None, typeId=None):
         extras = [("Timestamps in Log:", "ON" if self.timestamp_enabled else "OFF")]

@@ -1888,6 +1888,84 @@ class TestBatteryThresholdAndLuminanceScale(unittest.TestCase):
 
 
 # ==============================================================================
+# v5.12 deep-review IMPROVEMENTS batch
+# ==============================================================================
+
+class TestConfigurableLowBattery(unittest.TestCase):
+    """v5.12: the low-battery threshold is configurable (was hard-coded 20%)."""
+
+    def _dev(self):
+        return MockDevice(1, "Batt", address="12",
+                          plugin_props={"sensorType": "battery"})
+
+    def test_custom_threshold_30(self):
+        p = make_plugin()
+        p.low_batt_pct = 30
+        dev = self._dev()
+        p._handle_battery(dev, [0x80, 0x03, 0x1E])   # 30%
+        self.assertTrue(dev.state_writes["batteryLow"]["value"])
+
+    def test_custom_threshold_not_triggered(self):
+        p = make_plugin()
+        p.low_batt_pct = 10
+        dev = self._dev()
+        p._handle_battery(dev, [0x80, 0x03, 0x0F])   # 15% > 10
+        self.assertFalse(dev.state_writes["batteryLow"]["value"])
+
+    def test_missing_attr_defaults_to_20(self):
+        p = make_plugin()   # make_plugin does not set low_batt_pct
+        dev = self._dev()
+        p._handle_battery(dev, [0x80, 0x03, 0x14])   # 20%
+        self.assertTrue(dev.state_writes["batteryLow"]["value"])
+
+
+class TestEnergyDisplayStatusNoFlap(unittest.TestCase):
+    """v5.12: on Energy/Plug devices only power (W) drives displayStatus, so
+    interleaved V/A/kWh reports no longer make it flap."""
+
+    def _dev(self, stype):
+        return MockDevice(1, "Meter", address="12",
+                          plugin_props={"sensorType": stype})
+
+    def test_energy_power_sets_display(self):
+        p = make_plugin()
+        dev = self._dev("energy")
+        p._handle_meter(dev, [0x32, 0x02, 0x01, 0x12, 0x05, 0xDC])  # 1500 W (scale 2)
+        self.assertIn("W", dev.state_writes["displayStatus"]["value"])
+
+    def test_energy_voltage_does_not_touch_display(self):
+        p = make_plugin()
+        dev = self._dev("energy")
+        # electric scale 4 = Volts: prec_scale_size 0x22 (prec1,scale_lsb0... need scale=4)
+        # scale 4 needs scale2 bit (meter_type_rate bit7) set: 0x81, scale_lsb 0 -> scale=4
+        p._handle_meter(dev, [0x32, 0x02, 0x81, 0x22, 0x08, 0xFC])  # ~230.0 V
+        self.assertEqual(dev.state_writes["voltage"]["value"], 230.0)
+        self.assertNotIn("displayStatus", dev.state_writes)
+
+    def test_generic_still_shows_any_meter_value(self):
+        p = make_plugin()
+        dev = self._dev("generic")
+        p._handle_meter(dev, [0x32, 0x02, 0x81, 0x22, 0x08, 0xFC])  # voltage
+        self.assertIn("displayStatus", dev.state_writes)
+
+
+class TestParserSelfTest(unittest.TestCase):
+    """v5.12: the built-in parser self-test replays documented sample reports
+    and every documented case must pass (this is the plugin's no-hardware
+    regression net exposed as a menu item)."""
+
+    def test_all_self_test_cases_pass(self):
+        p = make_plugin()
+        _indigo.devices = MockDevicesDict()
+        # runSelfTest logs [PASS]/[FAIL] lines; assert no FAIL/ERR was logged.
+        p.runSelfTest()
+        logged = [str(c) for c in p.logger.warning.call_args_list] + \
+                 [str(c) for c in p.logger.error.call_args_list]
+        fails = [ln for ln in logged if "[FAIL]" in ln or "[ERR" in ln]
+        self.assertEqual(fails, [], msg=f"self-test cases failed: {fails}")
+
+
+# ==============================================================================
 # Entry point
 # ==============================================================================
 

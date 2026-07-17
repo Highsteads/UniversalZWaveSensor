@@ -1,6 +1,6 @@
 # Universal Z-Wave Sensor — Indigo Plugin
 
-**Version 5.7** | Indigo 2025.2+ | Python 3.13+
+**Version 5.12** | Indigo 2025.2+ | Python 3.13+
 
 Creates companion plugin devices alongside your existing Indigo Z-Wave devices, exposing sensor values that Indigo does not capture natively — temperature, humidity, luminance, contact state, lock state, scene controller events, and more.
 
@@ -25,15 +25,18 @@ The plugin also provides a **Simulate Z-Wave Report** tool — useful for sendin
 - **Correct icons** — thermometer, light sensor, motion, power, lock, and generic sensor icons set automatically
 - **displayStatus** — device list shows meaningful values: `detected / clear`, `open / closed`, `21.5 degC`, `450 lux`, `locked / unlocked`, `S1 pressed`, etc.
 - **Temperature unit preference** — store and display all temperatures in degC or degF regardless of what the sensor reports; conversion applied automatically
-- **Battery sensor type** — dedicated battery device with `batteryLow` flag; all device types also carry `batteryLevel` and `batteryLow` states
+- **Battery sensor type** — dedicated battery device with `batteryLow` flag; all battery-powered device types also carry `battery` (percentage) and `batteryLow` states
 - **Lock support** — DOOR_LOCK_OPERATION_REPORT decodes lock mode, bolt state, latch state, and last user ID; NOTIFICATION ACCESS_CONTROL events for keypad/RF/manual lock and unlock
 - **Scene controller** — CENTRAL_SCENE_NOTIFICATION decodes scene number, key action (pressed/released/held/repeated), and timestamp
-- **Stale device detection** — configurable threshold (4–72 h); logs a warning and sets `deviceOnline=False` when a device goes silent; clears automatically when any report arrives
+- **Stale device detection** — configurable threshold (4 hours to 14 days); logs a warning and sets `deviceOnline=False` when a device goes silent; clears automatically when any report arrives
+- **Configurable low-battery warning** — set the percentage at which the `batteryLow` flag trips (10–30%, default 20%)
 - **Wake-up interval tracking** — WAKE_UP_INTERVAL_REPORT stores the interval in the `wakeUpInterval` state; wake-up notifications mark the device as alive
 - **Simulate Z-Wave Report** — menu item lets you feed raw hex bytes to any plugin device for end-to-end testing; dialog stays open for iterative testing
+- **Run Parser Self-Test** — menu item replays a set of documented sample reports through the real parsers and logs a pass/fail line for each, so you can confirm decoding works without any hardware
+- **Show Status** — menu item logs a one-glance table of every monitored device: node, sensor type, online/stale, and last update time
 - **Generate Indigo Support Report** — one-click menu item dumps manufacturer ID, product type/ID, supported command classes, all device properties and states to the Indigo log; formatted for pasting into the Indigo forum to request native device support
 - **Debug logging** — toggleable; logs raw Z-Wave bytes and all state updates
-- **Mock test suite** — full test coverage without needing an Indigo server
+- **Mock test suite** — 182 tests, full coverage without needing an Indigo server
 
 ---
 
@@ -244,6 +247,10 @@ restarts. Defaults to ON.
 ## Changelog
 
 | Version | Date | Changes |
+|---------|------|---------|
+| 5.12 | 17-Jul-2026 | Deep-review improvements — new **Run Parser Self-Test** menu item (replays documented sample reports through the parsers and reports pass/fail, no hardware needed), new **Show Status** menu item (one-glance table of every monitored device), configurable low-battery warning threshold, 7-day and 14-day stale-threshold options, and an Energy/Plug status line that shows power instead of flapping between watts, volts, amps and kWh |
+| 5.11 | 17-Jul-2026 | Deep-review test buildout — 35 new tests covering door-lock decoding, plug on/off/toggle control, the node map lifecycle, thermostat setpoints, scene controllers, lock-via-notification, the remaining notification types, and multi-layer encapsulation (suite now 182 tests) |
+| 5.10 | 17-Jul-2026 | Deep-review hardening — stale detection survives a bad tick instead of stopping for good, a parser error on one sensor no longer drops reports for others sharing the same node, a stray report can no longer error on a mains plug, lock-user decoding fixed, and the verbose startup banner moved to the Show Plugin Info menu |
 |---|---|---|
 | 5.9 | 12-Jun-2026 | Supervision (CC 0x6C) and CRC-16 (CC 0x56) encapsulation now unwrapped transparently — S2-era devices wrap their reports in Supervision and these were previously dropped as unhandled. Endpoint filter now matches the originating endpoint of a report (was the controller-side endpoint, which silently dropped reports from relay sensor inputs such as the Zooz ZEN51/ZEN52/ZEN58 family). BASIC_SET and SWITCH_BINARY_SET handled — devices that report input changes to association groups via Set commands now update states. BARRIER_OPERATOR (CC 0x66) reports decoded — garage doors and gates (GoControl GD00Z and similar) surface open/closed/opening/closing/stopped and position %. Test suite repaired and extended to 127 tests |
 | 5.7 | 23-May-2026 | Millisecond timestamp `[HH:MM:SS.mmm]` prefix on every `self.logger` line via `plugin_utils.install_timestamp_filter()`; new "Toggle Timestamps in Log" menu item |

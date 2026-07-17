@@ -36,6 +36,22 @@
             <Option value="24">24 hours</Option>
             <Option value="48">48 hours</Option>
             <Option value="72">72 hours</Option>
+            <Option value="168">7 days</Option>
+            <Option value="336">14 days</Option>
+        </List>
+    </Field>
+
+    <SeparatorLine/>
+
+    <Field id="lowBatteryPercent" type="menu" defaultValue="20">
+        <Label>Low-battery warning at</Label>
+        <Description>Battery reports at or below this percentage set the batteryLow state. Raise it if you want earlier warnings.</Description>
+        <List>
+            <Option value="10">10%</Option>
+            <Option value="15">15%</Option>
+            <Option value="20">20%</Option>
+            <Option value="25">25%</Option>
+            <Option value="30">30%</Option>
         </List>
     </Field>
 </PluginConfig>
