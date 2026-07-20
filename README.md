@@ -114,6 +114,73 @@ For a multi-sensor (e.g. door sensor that also sends temperature and humidity), 
 
 ---
 
+## When Indigo creates one generic device instead of several
+
+The most common reason to reach for this plugin: you include a multi-sensor, and Indigo creates
+a single device rather than the several you expected. The syncing lines in the event log show a
+generic class such as `Routing Slave : Notification Sensor` or `Routing Slave : Binary Sensor`.
+
+This usually means the manufacturer has changed the product ID, so Indigo doesn't yet have that
+combination in its device database and falls back to the generic class it was told about. The
+hardware is almost always fine.
+
+### Step 1 — read the command classes to see what the device can actually report
+
+The `retrieved command classes` line in the log is the useful part. A real example, from a Neo
+Coolcam NAS-PD07Z that Indigo classed as a plain notification sensor:
+
+```
+Z-Wave Syncing - retrieved command classes: 20v1 5Ev1 98v1 9Fv1 6Cv1 55v1 86v1 73v1 85v1
+                                            8Ev1 59v1 72v1 5Av1 87v1 71v1 30v1 31v11 70v1 7Av1
+```
+
+The classes worth looking for:
+
+| Class | What its presence tells you |
+|---|---|
+| `31` SENSOR_MULTILEVEL | Temperature, humidity, luminance, CO2, UV, pressure and similar analogue readings |
+| `71` NOTIFICATION | Motion, tamper, contact, water, smoke, CO — the modern reporting class |
+| `30` SENSOR_BINARY | Motion, tamper, contact, water, smoke, CO — the older binary class |
+| `32` METER | Power, energy, voltage, current, gas, water |
+| `80` BATTERY | Battery percentage is reported, so a Battery device is worth creating |
+| `84` WAKE_UP | Battery-powered and sleepy — reports only on wake-up or state change |
+| `70` CONFIGURATION | Reporting intervals and thresholds can be changed (see step 3) |
+
+In the example above, `31v11` confirms the temperature, humidity and luminance sensors are
+present and `71`/`30` confirm the motion side — even though Indigo only surfaced one device.
+The absence of `80` and `84` says it is mains or USB powered and always listening, so a Battery
+companion device would stay empty.
+
+Cross-reference anything you find against the [Z-Wave command classes handled](#z-wave-command-classes-handled)
+table above to confirm this plugin decodes it.
+
+### Step 2 — create one companion device per reading
+
+Following the example: create a Temperature device, a Humidity device and a Luminance device,
+and select the **same** native Indigo device for all three. They sit alongside the device Indigo
+made, and each one carries a single reading.
+
+### Step 3 — if nothing arrives, it is a reporting problem, not a decoding problem
+
+The plugin can only decode what the sensor actually sends. If the lifeline association or the
+reporting parameters were never set up at inclusion, the device may not be sending those reports
+at all, and there is nothing to parse.
+
+Turn on **Enable debug logging** in the plugin preferences and watch for `CC=0x31` lines while
+the reading changes. If reports are arriving but the states are not updating, that is a plugin
+issue worth raising. If nothing arrives at all, use the device's manual to find the reporting
+interval and threshold parameters and set them via command class `70`.
+
+### Step 4 — ask for native support
+
+Companion devices are a stopgap. **Plugins → Universal Z-Wave Sensor → Generate Indigo Support
+Report** dumps the manufacturer ID, product type and ID, supported command classes, properties
+and states into the event log in one block, formatted for emailing to `support@indigodomo.com`
+or pasting into the Indigo forum. Once native support lands, delete the companion devices and
+repoint anything that referenced them.
+
+---
+
 ## Plugin preferences
 
 | Setting | Default | Description |
