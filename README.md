@@ -18,24 +18,24 @@ The plugin also provides a **Simulate Z-Wave Report** tool — useful for sendin
 
 ## Features
 
-- **Select from your existing Indigo devices** — dropdown lists all native Z-Wave devices; node ID is read automatically
+- **Select from your existing Indigo devices** — the dropdown lists every native Z-Wave device, and reads the node ID for you
 - **Multiple plugin devices per node** — one physical multi-sensor creates separate plugin devices per reading type (motion, temperature, luminance), each assigned the appropriate sensor type
 - **Multi-channel / endpoint support** — optional endpoint ID per device for multi-channel sensors (e.g. Aeotec 6-in-1)
 - **Eleven device types** — motion, contact, temperature, humidity, luminance, energy monitor, battery, lock, scene controller, plug/relay, generic
 - **Correct icons** — thermometer, light sensor, motion, power, lock, and generic sensor icons set automatically
 - **displayStatus** — device list shows meaningful values: `detected / clear`, `open / closed`, `21.5 degC`, `450 lux`, `locked / unlocked`, `S1 pressed`, etc.
-- **Temperature unit preference** — store and display all temperatures in degC or degF regardless of what the sensor reports; conversion applied automatically
-- **Battery sensor type** — dedicated battery device with `batteryLow` flag; all battery-powered device types also carry `battery` (percentage) and `batteryLow` states
-- **Lock support** — DOOR_LOCK_OPERATION_REPORT decodes lock mode, bolt state, latch state, and last user ID; NOTIFICATION ACCESS_CONTROL events for keypad/RF/manual lock and unlock
+- **Temperature unit preference** — store and show every temperature in degC or degF whatever the sensor reports, with the conversion done for you
+- **Battery sensor type** — a dedicated battery device with a `batteryLow` flag, and every battery-powered device type also carries `battery` (percentage) and `batteryLow` states
+- **Lock support** — DOOR_LOCK_OPERATION_REPORT decodes lock mode, bolt state, latch state and last user ID, and NOTIFICATION ACCESS_CONTROL covers keypad, RF and manual lock and unlock
 - **Scene controller** — CENTRAL_SCENE_NOTIFICATION decodes scene number, key action (pressed/released/held/repeated), and timestamp
-- **Stale device detection** — configurable threshold (4 hours to 14 days); logs a warning and sets `deviceOnline=False` when a device goes silent; clears automatically when any report arrives
+- **Stale device detection** — set a threshold between 4 hours and 14 days. When a device falls silent the plugin logs a warning and sets `deviceOnline=False`, then clears it the moment any report arrives
 - **Configurable low-battery warning** — set the percentage at which the `batteryLow` flag trips (10–30%, default 20%)
-- **Wake-up interval tracking** — WAKE_UP_INTERVAL_REPORT stores the interval in the `wakeUpInterval` state; wake-up notifications mark the device as alive
-- **Simulate Z-Wave Report** — menu item lets you feed raw hex bytes to any plugin device for end-to-end testing; dialog stays open for iterative testing
+- **Wake-up interval tracking** — WAKE_UP_INTERVAL_REPORT stores the interval in the `wakeUpInterval` state, and a wake-up notification marks the device alive
+- **Simulate Z-Wave Report** — a menu item that feeds raw hex bytes to any plugin device for end-to-end testing. The dialog stays open so you can keep trying
 - **Run Parser Self-Test** — menu item replays a set of documented sample reports through the real parsers and logs a pass/fail line for each, so you can confirm decoding works without any hardware
 - **Show Status** — menu item logs a one-glance table of every monitored device: node, sensor type, online/stale, and last update time
-- **Generate Indigo Support Report** — one-click menu item dumps manufacturer ID, product type/ID, supported command classes, all device properties and states to the Indigo log; formatted for pasting into the Indigo forum to request native device support
-- **Debug logging** — toggleable; logs raw Z-Wave bytes and all state updates
+- **Generate Indigo Support Report** — one menu click dumps manufacturer ID, product type and ID, supported command classes, and every device property and state to the Indigo log, laid out ready to paste into the Indigo forum when asking for native support
+- **Debug logging** — turn it on to log the raw Z-Wave bytes and every state update
 - **Mock test suite** — 182 tests, full coverage without needing an Indigo server
 
 ---
