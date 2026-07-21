@@ -181,8 +181,8 @@ interval and threshold parameters and set them via command class `70`.
 Companion devices are a stopgap. **Plugins → Universal Z-Wave Sensor → Generate Indigo Support
 Report** dumps the manufacturer ID, product type and ID, supported command classes, properties
 and states into the event log in one block, formatted for emailing to `support@indigodomo.com`
-or pasting into the Indigo forum. Once native support lands, delete the companion devices and
-repoint anything that referenced them.
+or pasting into the Indigo forum. Once Indigo supports the device natively, switch the devices
+over to native — repoint anything that used a companion device, then delete it.
 
 ---
 
