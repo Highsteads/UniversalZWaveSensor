@@ -148,8 +148,13 @@ The classes worth looking for:
 
 In the example above, `31v11` confirms the temperature, humidity and luminance sensors are
 present and `71`/`30` confirm the motion side — even though Indigo only surfaced one device.
-The absence of `80` and `84` says it is mains or USB powered and always listening, so a Battery
-companion device would stay empty.
+
+Read the list as a description of **this inclusion**, not of the model. Neither `80` nor `84`
+appears above, so a Battery companion device would have nothing to populate it — but that
+particular sensor can run from either a CR2 cell or USB, and plenty of dual-powered Z-Wave
+devices advertise the battery and wake-up classes only when they boot on the cell. If a reading
+you expected is missing from the list, it is worth re-checking on the power source you actually
+intend to use before concluding the device cannot report it.
 
 Cross-reference anything you find against the [Z-Wave command classes handled](#z-wave-command-classes-handled)
 table above to confirm this plugin decodes it.
