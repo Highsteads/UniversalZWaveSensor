@@ -320,6 +320,7 @@ survives a restart. It defaults to ON.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 5.13 | 21-Jul-2026 | Housekeeping. Shared-utility refresh: calling the log timestamp filter twice no longer double-stamps every line, and the module imports cleanly outside Indigo. |
 | 5.12 | 17-Jul-2026 | Deep-review improvements — new **Run Parser Self-Test** menu item (replays documented sample reports through the parsers and reports pass/fail, no hardware needed), new **Show Status** menu item (one-glance table of every monitored device), configurable low-battery warning threshold, 7-day and 14-day stale-threshold options, and an Energy/Plug status line that shows power instead of flapping between watts, volts, amps and kWh |
 | 5.11 | 17-Jul-2026 | Deep-review test buildout — 35 new tests covering door-lock decoding, plug on/off/toggle control, the node map lifecycle, thermostat setpoints, scene controllers, lock-via-notification, the remaining notification types, and multi-layer encapsulation (suite now 182 tests) |
 | 5.10 | 17-Jul-2026 | Deep-review hardening — stale detection survives a bad tick instead of stopping for good, a parser error on one sensor no longer drops reports for others sharing the same node, a stray report can no longer error on a mains plug, lock-user decoding fixed, and the verbose startup banner moved to the Show Plugin Info menu |
