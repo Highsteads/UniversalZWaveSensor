@@ -1,6 +1,6 @@
 # Universal Z-Wave Sensor — Indigo Plugin
 
-**Version 5.12** | Indigo 2025.2+ | Python 3.13+
+**Version 5.13** | Indigo 2025.2+ | Python 3.13+
 
 Creates companion plugin devices alongside your existing Indigo Z-Wave devices, exposing sensor values that Indigo does not capture natively — temperature, humidity, luminance, contact state, lock state, scene controller events, and more.
 
@@ -102,13 +102,30 @@ Existing plugin devices upgrade automatically. When Indigo loads the new plugin,
 ## Creating a device
 
 1. **Devices → New Device**
-2. Set Type to **Universal Z-Wave Sensor**, Model to **Universal Z-Wave Sensor**
-3. Click **Edit Device Settings**
-4. Select the **Native Indigo Z-Wave Device** from the dropdown — the node ID is read automatically
-5. Choose the **Sensor Type** for the value you want to capture (e.g. Temperature Sensor)
+2. Set Type to **Universal Z-Wave Sensor**
+3. Set Model to the reading you want to capture — with these eleven models the model *is* the sensor type, so there is no separate dropdown to set:
+
+   | Model | Captures |
+   |---|---|
+   | Motion Sensor | Motion and tamper |
+   | Contact Sensor | Door and window contacts |
+   | Temperature Sensor | Temperature |
+   | Humidity Sensor | Relative humidity |
+   | Luminance Sensor | Light level in lux |
+   | Energy Monitor | Power, energy, voltage and current |
+   | Battery Sensor | Battery percentage and a low-battery flag |
+   | Lock | Lock mode, bolt and latch state, last user |
+   | Scene Controller | Scene number and key action |
+   | Plug / Relay | On and off control, plus energy monitoring |
+   | Generic Sensor | Everything else the plugin decodes |
+
+4. Click **Edit Device Settings**
+5. Select the **Native Indigo Z-Wave Device** from the dropdown — the node ID is read automatically
 6. *(Optional)* Enter an **Endpoint ID** for multi-channel devices
 
-For a multi-sensor (e.g. door sensor that also sends temperature and humidity), create one plugin device per sensor type and select the same native device for each.
+For a multi-sensor (e.g. door sensor that also sends temperature and humidity), create one plugin device per reading and select the same native device for each.
+
+> **A twelfth model, Universal Z-Wave Sensor (Legacy), also appears in the list.** It is the original all-in-one type, where you pick the reading from a separate **Sensor Type** dropdown after choosing the native device. It stays in place so existing devices keep working — for anything new, pick one of the eleven models above.
 
 > **Naming tip:** Name plugin devices to reflect what they add, e.g. `Bathroom Door (Temp)` or `Hall PIR (Humidity)`. When Indigo adds native support for those values, delete the plugin devices and update any triggers or action groups — a one-time job.
 
@@ -324,9 +341,10 @@ survives a restart. It defaults to ON.
 | 5.12 | 17-Jul-2026 | Deep-review improvements — new **Run Parser Self-Test** menu item (replays documented sample reports through the parsers and reports pass/fail, no hardware needed), new **Show Status** menu item (one-glance table of every monitored device), configurable low-battery warning threshold, 7-day and 14-day stale-threshold options, and an Energy/Plug status line that shows power instead of flapping between watts, volts, amps and kWh |
 | 5.11 | 17-Jul-2026 | Deep-review test buildout — 35 new tests covering door-lock decoding, plug on/off/toggle control, the node map lifecycle, thermostat setpoints, scene controllers, lock-via-notification, the remaining notification types, and multi-layer encapsulation (suite now 182 tests) |
 | 5.10 | 17-Jul-2026 | Deep-review hardening — stale detection survives a bad tick instead of stopping for good, a parser error on one sensor no longer drops reports for others sharing the same node, a stray report can no longer error on a mains plug, lock-user decoding fixed, and the verbose startup banner moved to the Show Plugin Info menu |
-|---|---|---|
 | 5.9 | 12-Jun-2026 | Supervision (CC 0x6C) and CRC-16 (CC 0x56) encapsulation now unwrapped transparently — S2-era devices wrap their reports in Supervision and these were previously dropped as unhandled. Endpoint filter now matches the originating endpoint of a report (was the controller-side endpoint, which silently dropped reports from relay sensor inputs such as the Zooz ZEN51/ZEN52/ZEN58 family). BASIC_SET and SWITCH_BINARY_SET handled — devices that report input changes to association groups via Set commands now update states. BARRIER_OPERATOR (CC 0x66) reports decoded — garage doors and gates (GoControl GD00Z and similar) surface open/closed/opening/closing/stopped and position %. Test suite repaired and extended to 127 tests |
+| 5.8 | 25-May-2026 | Device communication now restarts only when the source device, the endpoint or the sensor type changes — the three settings that decide which native device a companion listens to, and the only ones that need the node map rebuilt. Other property writes no longer cause a needless restart |
 | 5.7 | 23-May-2026 | Millisecond timestamp `[HH:MM:SS.mmm]` prefix on every `self.logger` line via `plugin_utils.install_timestamp_filter()`; new "Toggle Timestamps in Log" menu item |
+| 5.6 | 10-May-2026 | Broader Z-Wave coverage. New handlers for HAIL (0x82), DEVICE_RESET_LOCALLY (0x5A), SCENE_ACTIVATION (0x2B), the three thermostat classes — mode (0x40), operating state (0x42) and setpoint (0x43) — and VERSION_REPORT (0x86). SENSOR_MULTILEVEL gained power, atmospheric pressure, target temperature and PM2.5. Eight further notification types decoded: heat, system, appliance, home health, siren, water valve, weather and gas. Generic and Legacy devices gained the matching states, and an unhandled event now logs a readable type name rather than a bare number |
 | 5.5 | 04-May-2026 | Fix displayStatus state-not-defined error on Plug/Relay devices — all displayStatus writes now route through _safe_update and silently skip device types that do not define that state |
 | 5.4 | 04-May-2026 | Generate Indigo Support Report menu item — dumps manufacturer ID, product type/ID, supported command classes, owner props, and all device states to the Indigo log, formatted for pasting into the Indigo forum; Show Plugin Info menu item added |
 | 5.3 | 04-May-2026 | Removed battery/batteryLow/wakeUpInterval states from Plug/Relay device type (mains-powered, irrelevant) |
