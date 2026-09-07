@@ -25,8 +25,10 @@
         <ConfigUI>
             <Field id="deviceId" type="menu" defaultValue="">
                 <Label>Plugin Device</Label>
-                <Description>Select a plugin device — all Z-Wave properties will be written to the Indigo log, ready to paste into the Indigo forum for Matt and Jay</Description>
                 <List class="self" method="get_support_device_list" dynamicReload="false"/>
+            </Field>
+            <Field id="label_deviceId_info" type="label">
+                <Label>Select a plugin device — all Z-Wave properties will be written to the Indigo log, ready to paste into the Indigo forum for Matt and Jay</Label>
             </Field>
             <Field id="generateButton" type="button">
                 <Label> </Label>

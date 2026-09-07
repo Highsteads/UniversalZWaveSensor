@@ -2,7 +2,9 @@
 <PluginConfig>
     <Field id="showDebugInfo" type="checkbox" defaultValue="false">
         <Label>Enable debug logging</Label>
-        <Description>Log all incoming Z-Wave bytes and cmd dict keys to Indigo log. Use this when first testing a new device.</Description>
+    </Field>
+    <Field id="label_showDebugInfo_info" type="label">
+        <Label>Log all incoming Z-Wave bytes and cmd dict keys to Indigo log. Use this when first testing a new device.</Label>
     </Field>
     <Field id="logUnknownReports" type="checkbox" defaultValue="true">
         <Label>Log unknown command classes</Label>
@@ -13,11 +15,13 @@
 
     <Field id="tempUnit" type="menu" defaultValue="degC">
         <Label>Temperature unit</Label>
-        <Description>All temperature reports are converted to this unit before storing, regardless of what the sensor reports.</Description>
         <List>
             <Option value="degC">Celsius (degC)</Option>
             <Option value="degF">Fahrenheit (degF)</Option>
         </List>
+    </Field>
+    <Field id="label_tempUnit_info" type="label">
+        <Label>All temperature reports are converted to this unit before storing, regardless of what the sensor reports.</Label>
     </Field>
 
     <SeparatorLine/>
@@ -28,7 +32,6 @@
     </Field>
     <Field id="staleThresholdHours" type="menu" defaultValue="24">
         <Label>Stale threshold</Label>
-        <Description>How long without any report before a device is considered offline. Battery devices report infrequently — allow extra margin.</Description>
         <List>
             <Option value="4">4 hours</Option>
             <Option value="8">8 hours</Option>
@@ -40,12 +43,14 @@
             <Option value="336">14 days</Option>
         </List>
     </Field>
+    <Field id="label_staleThresholdHours_info" type="label">
+        <Label>How long without any report before a device is considered offline. Battery devices report infrequently — allow extra margin.</Label>
+    </Field>
 
     <SeparatorLine/>
 
     <Field id="lowBatteryPercent" type="menu" defaultValue="20">
         <Label>Low-battery warning at</Label>
-        <Description>Battery reports at or below this percentage set the batteryLow state. Raise it if you want earlier warnings.</Description>
         <List>
             <Option value="10">10%</Option>
             <Option value="15">15%</Option>
@@ -53,5 +58,8 @@
             <Option value="25">25%</Option>
             <Option value="30">30%</Option>
         </List>
+    </Field>
+    <Field id="label_lowBatteryPercent_info" type="label">
+        <Label>Battery reports at or below this percentage set the batteryLow state. Raise it if you want earlier warnings.</Label>
     </Field>
 </PluginConfig>

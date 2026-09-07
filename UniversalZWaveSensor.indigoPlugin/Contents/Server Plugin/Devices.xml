@@ -15,12 +15,16 @@
         <ConfigUI>
             <Field id="sourceDeviceId" type="menu" defaultValue="none">
                 <Label>Native Indigo Z-Wave Device</Label>
-                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Description>
                 <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="label_sourceDeviceId_info" type="label">
+                <Label>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Label>
             </Field>
             <Field id="endpointId" type="textfield" defaultValue="">
                 <Label>Endpoint ID</Label>
-                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="label_endpointId_info" type="label">
+                <Label>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Label>
             </Field>
             <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
             <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
@@ -89,12 +93,16 @@
         <ConfigUI>
             <Field id="sourceDeviceId" type="menu" defaultValue="none">
                 <Label>Native Indigo Z-Wave Device</Label>
-                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Description>
                 <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="label_sourceDeviceId_info" type="label">
+                <Label>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Label>
             </Field>
             <Field id="endpointId" type="textfield" defaultValue="">
                 <Label>Endpoint ID</Label>
-                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="label_endpointId_info" type="label">
+                <Label>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Label>
             </Field>
             <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
             <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
@@ -163,12 +171,16 @@
         <ConfigUI>
             <Field id="sourceDeviceId" type="menu" defaultValue="none">
                 <Label>Native Indigo Z-Wave Device</Label>
-                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Description>
                 <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="label_sourceDeviceId_info" type="label">
+                <Label>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Label>
             </Field>
             <Field id="endpointId" type="textfield" defaultValue="">
                 <Label>Endpoint ID</Label>
-                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="label_endpointId_info" type="label">
+                <Label>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Label>
             </Field>
             <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
             <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
@@ -232,12 +244,16 @@
         <ConfigUI>
             <Field id="sourceDeviceId" type="menu" defaultValue="none">
                 <Label>Native Indigo Z-Wave Device</Label>
-                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Description>
                 <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="label_sourceDeviceId_info" type="label">
+                <Label>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Label>
             </Field>
             <Field id="endpointId" type="textfield" defaultValue="">
                 <Label>Endpoint ID</Label>
-                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="label_endpointId_info" type="label">
+                <Label>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Label>
             </Field>
             <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
             <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
@@ -301,12 +317,16 @@
         <ConfigUI>
             <Field id="sourceDeviceId" type="menu" defaultValue="none">
                 <Label>Native Indigo Z-Wave Device</Label>
-                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Description>
                 <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="label_sourceDeviceId_info" type="label">
+                <Label>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Label>
             </Field>
             <Field id="endpointId" type="textfield" defaultValue="">
                 <Label>Endpoint ID</Label>
-                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="label_endpointId_info" type="label">
+                <Label>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Label>
             </Field>
             <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
             <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
@@ -370,12 +390,16 @@
         <ConfigUI>
             <Field id="sourceDeviceId" type="menu" defaultValue="none">
                 <Label>Native Indigo Z-Wave Device</Label>
-                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Description>
                 <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="label_sourceDeviceId_info" type="label">
+                <Label>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Label>
             </Field>
             <Field id="endpointId" type="textfield" defaultValue="">
                 <Label>Endpoint ID</Label>
-                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="label_endpointId_info" type="label">
+                <Label>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Label>
             </Field>
             <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
             <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
@@ -454,12 +478,16 @@
         <ConfigUI>
             <Field id="sourceDeviceId" type="menu" defaultValue="none">
                 <Label>Native Indigo Z-Wave Device</Label>
-                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Description>
                 <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="label_sourceDeviceId_info" type="label">
+                <Label>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Label>
             </Field>
             <Field id="endpointId" type="textfield" defaultValue="">
                 <Label>Endpoint ID</Label>
-                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="label_endpointId_info" type="label">
+                <Label>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Label>
             </Field>
             <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
             <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
@@ -518,12 +546,16 @@
         <ConfigUI>
             <Field id="sourceDeviceId" type="menu" defaultValue="none">
                 <Label>Native Indigo Z-Wave Device</Label>
-                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Description>
                 <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="label_sourceDeviceId_info" type="label">
+                <Label>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Label>
             </Field>
             <Field id="endpointId" type="textfield" defaultValue="">
                 <Label>Endpoint ID</Label>
-                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="label_endpointId_info" type="label">
+                <Label>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Label>
             </Field>
             <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
             <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
@@ -607,12 +639,16 @@
         <ConfigUI>
             <Field id="sourceDeviceId" type="menu" defaultValue="none">
                 <Label>Native Indigo Z-Wave Device</Label>
-                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Description>
                 <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="label_sourceDeviceId_info" type="label">
+                <Label>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Label>
             </Field>
             <Field id="endpointId" type="textfield" defaultValue="">
                 <Label>Endpoint ID</Label>
-                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="label_endpointId_info" type="label">
+                <Label>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Label>
             </Field>
             <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
             <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
@@ -687,12 +723,16 @@
         <ConfigUI>
             <Field id="sourceDeviceId" type="menu" defaultValue="none">
                 <Label>Native Indigo Z-Wave Device</Label>
-                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Description>
                 <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="label_sourceDeviceId_info" type="label">
+                <Label>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Label>
             </Field>
             <Field id="endpointId" type="textfield" defaultValue="">
                 <Label>Endpoint ID</Label>
-                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="label_endpointId_info" type="label">
+                <Label>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Label>
             </Field>
             <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
             <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
@@ -893,12 +933,16 @@
         <ConfigUI>
             <Field id="sourceDeviceId" type="menu" defaultValue="none">
                 <Label>Native Indigo Z-Wave Device</Label>
-                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Description>
                 <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="label_sourceDeviceId_info" type="label">
+                <Label>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically.</Label>
             </Field>
             <Field id="endpointId" type="textfield" defaultValue="">
                 <Label>Endpoint ID</Label>
-                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="label_endpointId_info" type="label">
+                <Label>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...). Leave blank or 0 to accept all endpoints.</Label>
             </Field>
             <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
             <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
@@ -956,8 +1000,10 @@
         <ConfigUI>
             <Field id="sourceDeviceId" type="menu" defaultValue="none">
                 <Label>Native Indigo Z-Wave Device</Label>
-                <Description>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically. For a multi-sensor, create one plugin device per sensor type and select the same native device for each.</Description>
                 <List class="self" filter="" method="get_native_zwave_devices" dynamicReload="true"/>
+            </Field>
+            <Field id="label_sourceDeviceId_info" type="label">
+                <Label>Select the existing Indigo device for this sensor — the Z-Wave node ID is read from it automatically. For a multi-sensor, create one plugin device per sensor type and select the same native device for each.</Label>
             </Field>
             <Field id="sensorType" type="menu" defaultValue="motion">
                 <Label>Sensor Type</Label>
@@ -977,7 +1023,9 @@
             </Field>
             <Field id="endpointId" type="textfield" defaultValue="">
                 <Label>Endpoint ID</Label>
-                <Description>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...) this device should listen on. Leave blank or 0 to accept all endpoints.</Description>
+            </Field>
+            <Field id="label_endpointId_info" type="label">
+                <Label>Optional. For multi-channel devices only: enter the endpoint number (1, 2, 3...) this device should listen on. Leave blank or 0 to accept all endpoints.</Label>
             </Field>
             <Field id="nodeId"  type="textfield" hidden="true"><Label>Node ID</Label></Field>
             <Field id="address" type="textfield" hidden="true"><Label>Address</Label></Field>
