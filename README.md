@@ -1,6 +1,6 @@
 # Universal Z-Wave Sensor — Indigo Plugin
 
-**Version 5.13** | Indigo 2025.2+ | Python 3.13+
+**Version:** 5.14 | Indigo 2025.2+ | Python 3.13+
 
 Creates companion plugin devices alongside your existing Indigo Z-Wave devices, exposing sensor values that Indigo does not capture natively — temperature, humidity, luminance, contact state, lock state, scene controller events, and more.
 
