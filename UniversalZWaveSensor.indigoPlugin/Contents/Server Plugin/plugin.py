@@ -5,9 +5,15 @@
 #              alongside existing Indigo Z-Wave devices, capturing sensor values
 #              (temperature, humidity, contact, etc.) that Indigo does not expose
 #              natively. Uses subscribeToIncoming() to receive ALL Z-Wave bytes.
-# Author:      CliveS & Claude Opus 4.8
-# Date:        21-07-2026
-# Version:     5.14
+# Author:      CliveS & Claude Opus 4.8, Claude Opus 5.5
+# Date:        27-09-2026
+# Version:     5.15
+#
+# v5.15 (27-09-2026): Online state set True when a device starts or reports,
+# False only on the stale path; simulateReport example for "motion cleared"
+# corrected; stale bundled manual removed (the guide site replaces it);
+# Door Lock latch bit read per spec (bit 2 set = closed, was inverted);
+# staleThresholdHours / lowBatteryPercent int() guarded with a fallback.
 #
 # v5.13 (21-07-2026): shared plugin_utils.py refreshed to v1.3 — the
 # estate-wide propagation of the four Appliance Monitor deep-review fixes.
@@ -388,8 +394,8 @@ class Plugin(indigo.PluginBase):
         self.log_unknown    = prefs.get("logUnknownReports",     True)
         self.temp_unit      = prefs.get("tempUnit",              "degC")
         self.stale_enabled  = prefs.get("enableStaleDetection",  True)
-        self.stale_hours    = int(prefs.get("staleThresholdHours", 24))
-        self.low_batt_pct   = int(prefs.get("lowBatteryPercent",  20))
+        self.stale_hours    = self._pref_int(prefs, "staleThresholdHours", 24)
+        self.low_batt_pct   = self._pref_int(prefs, "lowBatteryPercent",  20)
         # Maps Z-Wave node_id (int) -> list of Indigo device_ids (int)
         # One physical Z-Wave node can back multiple plugin devices (motion, temp, lux...)
         self.node_to_device:   dict[int, list[int]] = {}
@@ -403,6 +409,18 @@ class Plugin(indigo.PluginBase):
         # Indigo already logs its own "Starting plugin" line and startup() logs
         # the monitored-node count. The full diagnostic banner is available on
         # demand via Plugins > Universal Z-Wave Sensor > Show Plugin Info.
+
+    def _pref_int(self, prefs, key, default):
+        """int() of a pref with the house fallback: a blank or non-numeric
+        value logs a WARNING naming the field and uses the default."""
+        raw = prefs.get(key, default)
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            self.logger.warning(
+                f"Setting '{key}' has an unusable value {raw!r} — using {default}"
+            )
+            return default
 
     # ==========================================================================
     # Plugin lifecycle
@@ -444,8 +462,8 @@ class Plugin(indigo.PluginBase):
             self.log_unknown   = values_dict.get("logUnknownReports",    True)
             self.temp_unit     = values_dict.get("tempUnit",             "degC")
             self.stale_enabled = values_dict.get("enableStaleDetection", True)
-            self.stale_hours   = int(values_dict.get("staleThresholdHours", 24))
-            self.low_batt_pct  = int(values_dict.get("lowBatteryPercent",  20))
+            self.stale_hours   = self._pref_int(values_dict, "staleThresholdHours", 24)
+            self.low_batt_pct  = self._pref_int(values_dict, "lowBatteryPercent",  20)
             self.logger.info(
                 f"Prefs updated: debug={self.debug} log_unknown={self.log_unknown} "
                 f"temp_unit={self.temp_unit} stale={self.stale_enabled}/{self.stale_hours}h "
@@ -577,6 +595,7 @@ class Plugin(indigo.PluginBase):
             self._ensure_states_visible(device)
             self._sync_plug_state(device)
             self._init_display_status(device)
+            self._init_online_state(device)
             node_id = self._get_node_id(device)
             if node_id:
                 if node_id not in self.node_to_device:
@@ -1620,6 +1639,16 @@ class Plugin(indigo.PluginBase):
         self._touch(device)
         return True
 
+    @staticmethod
+    def _decode_door_condition(door_condition) -> tuple[bool, bool, bool]:
+        """Return (door_closed, bolt_locked, latch_closed) from the Door Lock
+        Operation Report door-condition byte (SDS13781): bit 0 Door 1=closed,
+        bit 1 Bolt 0=locked, bit 2 Latch 1=closed."""
+        door_closed  = bool(door_condition & 0x01)
+        bolt_locked  = not bool((door_condition >> 1) & 0x01)
+        latch_closed = bool((door_condition >> 2) & 0x01)
+        return door_closed, bolt_locked, latch_closed
+
     def _handle_door_lock(self, device, raw) -> bool:
         """
         DOOR_LOCK_OPERATION_REPORT (CC=0x62, cmd=0x03)
@@ -1627,10 +1656,12 @@ class Plugin(indigo.PluginBase):
         v2+: [0x62, 0x03, mode, handles_mode, door_condition, timeout_min, timeout_sec]
         mode: 0x00=unsecured  0x01=unsecured+timeout  0x10=inside-handle  0xFF=secured
 
-        door_condition byte (raw[4], v2+ only):
-          bit 0 SET = door physically open
-          bit 1 SET = bolt unlocked  (0 = bolt locked / deadbolt extended)
-          bit 2 SET = latch open     (0 = latch closed / latched)
+        door_condition byte (raw[4], v2+ only), per the Door Lock CC spec
+        (SDS13781) — decoded by _decode_door_condition():
+          bit 0 Door:  0 = open,   1 = closed
+          bit 1 Bolt:  0 = locked, 1 = unlocked
+          bit 2 Latch: 0 = open,   1 = closed
+        Before v5.15 the latch bit was read the wrong way round.
         """
         if len(raw) < 3:
             return False
@@ -1652,10 +1683,11 @@ class Plugin(indigo.PluginBase):
         # v2+ door condition bitmask
         if len(raw) >= 5:
             door_condition = raw[4]
-            bolt_locked    = not bool((door_condition >> 1) & 0x01)
-            latch_closed   = not bool((door_condition >> 2) & 0x01)
+            door_closed, bolt_locked, latch_closed = \
+                self._decode_door_condition(door_condition)
             self.logger.debug(
                 f"{device.name}: door_condition=0x{door_condition:02X} "
+                f"door={'closed' if door_closed else 'open'} "
                 f"bolt={'locked' if bolt_locked else 'unlocked'} "
                 f"latch={'closed' if latch_closed else 'open'}"
             )
@@ -1864,7 +1896,7 @@ class Plugin(indigo.PluginBase):
           Temperature 21.5 degC:      31 05 01 22 00 D7
           Humidity 35.1%:             31 05 05 22 01 5F
           Motion detected (NOTIF):    71 05 00 00 00 FF 07 07 00
-          Motion cleared  (NOTIF):    71 05 00 00 00 FF 07 08 00
+          Motion cleared  (NOTIF):    71 05 00 00 00 FF 07 00 00
           Door open       (NOTIF):    71 05 00 00 00 FF 06 16 00
           Door closed     (NOTIF):    71 05 00 00 00 FF 06 17 00
           Lock locked     (CC 0x62):  62 03 FF
@@ -1998,13 +2030,44 @@ class Plugin(indigo.PluginBase):
                     self.node_to_device[node_id].append(device.id)
 
     def _touch(self, device):
-        """Update lastUpdate, mark device online, and clear any stale flag."""
+        """Update lastUpdate, mark device online, and clear any stale flag.
+
+        Any report proves the sensor is alive, so deviceOnline goes True here
+        whether or not the device was ever flagged stale. Before v5.15 it was
+        only set on the way back from stale, so a device that had never gone
+        quiet could sit at the state's default (False) and read as offline.
+        """
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         device.updateStateOnServer("lastUpdate", value=ts)
-        if device.id in self.stale_device_ids:
-            self.stale_device_ids.discard(device.id)
-            device.updateStateOnServer("deviceOnline", value=True, uiValue="online")
+        was_stale = device.id in self.stale_device_ids
+        self.stale_device_ids.discard(device.id)
+        self._mark_online(device, force=was_stale)
+        if was_stale:
             self.logger.info(f"{device.name}: Back online (report received)")
+
+    def _mark_online(self, device, force=False):
+        """Set deviceOnline True, skipping the write when it already is True
+        so every report does not add a history row. force=True always writes
+        (the device's cached states may predate the stale path's False).
+        Every device type declares deviceOnline in Devices.xml."""
+        if force or device.states.get("deviceOnline") is not True:
+            device.updateStateOnServer("deviceOnline", value=True, uiValue="online")
+
+    def _init_online_state(self, device):
+        """At device start, set deviceOnline True unless the device is already
+        past the stale threshold — that one is left for _check_stale_devices,
+        which marks it offline and logs the warning once. The quiet path is
+        the only place a device is set offline."""
+        if self.stale_enabled:
+            last_str = device.states.get("lastUpdate", "") or ""
+            try:
+                last_dt = datetime.strptime(last_str, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                last_dt = None
+            if last_dt is not None and \
+                    datetime.now() - last_dt > timedelta(hours=self.stale_hours):
+                return
+        self._mark_online(device)
 
     # -------------------------------------------------------------------------
     # Menu handlers

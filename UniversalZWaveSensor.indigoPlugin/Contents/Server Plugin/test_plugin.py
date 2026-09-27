@@ -623,6 +623,99 @@ class TestStaleDetection(unittest.TestCase):
         self.assertNotIn(dev.id, self.p.stale_device_ids)
         self.assertTrue(dev.state_writes["deviceOnline"]["value"])
 
+    def test_touch_sets_online_on_device_never_flagged(self):
+        """v5.15: any report sets deviceOnline True, even on a device that has
+        never gone quiet and still carries the state's default False."""
+        dev = MockDevice(1, "Sensor1", address="50",
+                         states={"lastUpdate": "", "deviceOnline": False},
+                         plugin_props={"sensorType": "motion"})
+        self.p._touch(dev)
+        self.assertTrue(dev.state_writes["deviceOnline"]["value"])
+        self.p.logger.info.assert_not_called()   # no "Back online" line
+
+    def test_touch_does_not_rewrite_online_when_already_true(self):
+        """v5.15: an online device is not rewritten on every report."""
+        dev = MockDevice(1, "Sensor1", address="50",
+                         states={"lastUpdate": "", "deviceOnline": True},
+                         plugin_props={"sensorType": "motion"})
+        self.p._touch(dev)
+        self.assertNotIn("deviceOnline", dev.state_writes)
+
+
+class TestOnlineAtDeviceStart(unittest.TestCase):
+    """v5.15: deviceStartComm sets deviceOnline True unless the device is
+    already past the stale threshold, so Show Status never calls a healthy
+    device offline just because the state was never written."""
+
+    def setUp(self):
+        self.p = make_plugin()
+        self.p._devices_starting = set()
+        self.devs = MockDevicesDict()
+        _indigo.devices = self.devs
+
+    def _start(self, last_update, online=False):
+        d = MockDevice(101, "Dev101", address="42",
+                       states={"lastUpdate": last_update, "deviceOnline": online},
+                       plugin_props={"sensorType": "motion", "nodeId": "42"})
+        self.devs[101] = d
+        self.p.deviceStartComm(d)
+        return d
+
+    @staticmethod
+    def _ts(hours_ago):
+        return (datetime.now() - timedelta(hours=hours_ago)).strftime("%Y-%m-%d %H:%M:%S")
+
+    def test_recent_report_starts_online(self):
+        d = self._start(self._ts(1))
+        self.assertTrue(d.state_writes["deviceOnline"]["value"])
+
+    def test_never_reported_starts_online(self):
+        d = self._start("")
+        self.assertTrue(d.state_writes["deviceOnline"]["value"])
+
+    def test_past_threshold_left_for_stale_check(self):
+        d = self._start(self._ts(30))            # threshold 24h
+        self.assertNotIn("deviceOnline", d.state_writes)
+
+    def test_past_threshold_with_detection_off_starts_online(self):
+        self.p.stale_enabled = False
+        d = self._start(self._ts(30))
+        self.assertTrue(d.state_writes["deviceOnline"]["value"])
+
+
+class TestSimulateReportDocExamples(unittest.TestCase):
+    """v5.15: every motion/door/lock example in simulateReport's docstring
+    must decode to what its label says (one was labelled "cleared" while
+    the bytes meant motion seen)."""
+
+    EXPECT = {
+        "Motion detected": ("motion",    True),
+        "Motion cleared":  ("motion",    False),
+        "Door open":       ("contact",   True),
+        "Door closed":     ("contact",   False),
+        "Lock locked":     ("lockState", True),
+        "Lock unlocked":   ("lockState", False),
+    }
+
+    def test_labelled_examples_decode_as_labelled(self):
+        doc = _plugin_mod.Plugin.simulateReport.__doc__
+        seen = set()
+        for line in doc.splitlines():
+            if ":" not in line:
+                continue
+            label, _, hexs = line.strip().rpartition(":")
+            for key, (state, want) in self.EXPECT.items():
+                if not label.startswith(key):
+                    continue
+                seen.add(key)
+                p = make_plugin()
+                dev = MockDevice(1, "Doc", plugin_props={"sensorType": "generic"})
+                raw = [int(b, 16) for b in hexs.split()]
+                p._route_zwave_report(dev, 5, raw[0], raw[1], raw, hexs.strip())
+                self.assertEqual(dev.state_writes[state]["value"], want,
+                                 msg=f"{label.strip()} [{hexs.strip()}]")
+        self.assertEqual(seen, set(self.EXPECT))
+
 
 # ==============================================================================
 # Tests: raw Z-Wave parsers (_handle_* methods)
@@ -1592,22 +1685,81 @@ class TestHandleDoorLock(unittest.TestCase):
         self.assertFalse(dev.state_writes["onOffState"]["value"])
         self.assertEqual(dev.state_writes["displayStatus"]["value"], "unlocked")
 
-    def test_v2_door_condition_bolt_and_latch_open(self):
-        # door_condition 0x06 = bit1 (bolt unlocked) + bit2 (latch open) set.
+    def _cond(self, byte):
         dev = self._dev()
-        self.p._handle_door_lock(dev, [0x62, 0x03, 0xFF, 0x00, 0x06, 0, 0])
-        self.assertFalse(dev.state_writes["boltState"]["value"])   # bolt NOT locked
-        self.assertFalse(dev.state_writes["latchState"]["value"])  # latch NOT closed
+        self.p._handle_door_lock(dev, [0x62, 0x03, 0xFF, 0x00, byte, 0, 0])
+        return (dev.state_writes["boltState"]["value"],
+                dev.state_writes["latchState"]["value"])
 
-    def test_v2_door_condition_bolt_locked_latch_closed(self):
-        # door_condition 0x00 = both bits clear -> bolt locked, latch closed.
-        dev = self._dev()
-        self.p._handle_door_lock(dev, [0x62, 0x03, 0xFF, 0x00, 0x00, 0, 0])
-        self.assertTrue(dev.state_writes["boltState"]["value"])
-        self.assertTrue(dev.state_writes["latchState"]["value"])
+    def test_v2_condition_0xFD_bolt_locked_latch_closed(self):
+        # SDS13781: 0xFD = bit0 1 (door closed), bit1 0 (bolt locked), bit2 1 (latch closed)
+        self.assertEqual(self._cond(0xFD), (True, True))
+
+    def test_v2_condition_0xFA_bolt_unlocked_latch_open(self):
+        # 0xFA = bit0 0 (door open), bit1 1 (bolt unlocked), bit2 0 (latch open)
+        self.assertEqual(self._cond(0xFA), (False, False))
+
+    def test_v2_condition_0x00_bolt_locked_latch_open(self):
+        self.assertEqual(self._cond(0x00), (True, False))
+
+    def test_v2_condition_0x06_bolt_unlocked_latch_closed(self):
+        self.assertEqual(self._cond(0x06), (False, True))
+
+    def test_decode_each_bit_both_ways(self):
+        dec = _plugin_mod.Plugin._decode_door_condition
+        # (door_closed, bolt_locked, latch_closed)
+        self.assertEqual(dec(0x00), (False, True,  False))
+        self.assertEqual(dec(0x01), (True,  True,  False))   # door bit
+        self.assertEqual(dec(0x02), (False, False, False))   # bolt bit
+        self.assertEqual(dec(0x04), (False, True,  True))    # latch bit
+        self.assertEqual(dec(0xFD), (True,  True,  True))
+        self.assertEqual(dec(0xFA), (False, False, False))
 
     def test_too_short_returns_false(self):
         self.assertFalse(self.p._handle_door_lock(self._dev(), [0x62, 0x03]))
+
+
+class TestPrefIntGuard(unittest.TestCase):
+    """v5.15: a blank or non-numeric staleThresholdHours / lowBatteryPercent
+    falls back to its default with a WARNING naming the field, in both
+    __init__ and closedPrefsConfigUi."""
+
+    def test_blank_and_junk_fall_back_with_warning(self):
+        p = make_plugin()
+        self.assertEqual(p._pref_int({"staleThresholdHours": ""}, "staleThresholdHours", 24), 24)
+        self.assertEqual(p._pref_int({"lowBatteryPercent": "abc"}, "lowBatteryPercent", 20), 20)
+        self.assertEqual(p.logger.warning.call_count, 2)
+        self.assertIn("staleThresholdHours", str(p.logger.warning.call_args_list[0]))
+
+    def test_numeric_string_is_used(self):
+        p = make_plugin()
+        self.assertEqual(p._pref_int({"staleThresholdHours": "168"}, "staleThresholdHours", 24), 168)
+        p.logger.warning.assert_not_called()
+
+    def test_closed_prefs_survives_blank_values(self):
+        p = make_plugin()
+        p.closedPrefsConfigUi({"staleThresholdHours": "", "lowBatteryPercent": None}, False)
+        self.assertEqual((p.stale_hours, p.low_batt_pct), (24, 20))
+
+    def test_init_survives_blank_values(self):
+        # PluginBase is a bare `object` under the mock, so stand in for the
+        # zero-argument super() that __init__ calls (module globals shadow
+        # the builtin) and give the instance its logger there.
+        p = _plugin_mod.Plugin.__new__(_plugin_mod.Plugin)
+
+        class _Super:
+            def __init__(self, *a, **k):
+                p.logger = MagicMock()
+        _plugin_mod.super = lambda *a: _Super()
+        try:
+            _plugin_mod.Plugin.__init__(
+                p, "id", "name", "5.15",
+                {"staleThresholdHours": "", "lowBatteryPercent": "x",
+                 "timestampEnabled": False})
+        finally:
+            del _plugin_mod.super
+        self.assertEqual((p.stale_hours, p.low_batt_pct), (24, 20))
+        self.assertEqual(p.logger.warning.call_count, 2)
 
 
 class TestActionControlDevice(unittest.TestCase):

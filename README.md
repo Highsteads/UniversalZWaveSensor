@@ -2,7 +2,7 @@
 
 **Show the readings Indigo leaves out when it does not fully know a Z-Wave sensor, as Indigo devices of their own.**
 
-**Version:** 5.14 | **Author:** CliveS & Claude | **Needs:** Indigo 2022.1 or later, with a Z-Wave interface
+**Version:** 5.15 | **Author:** CliveS & Claude | **Needs:** Indigo 2022.1 or later, with a Z-Wave interface
 
 **[Read the full guide](https://highsteads.github.io/UniversalZWaveSensor/)** — setting up, what everything means, and what to do when something goes wrong.
 
@@ -53,11 +53,11 @@ The [full guide](https://highsteads.github.io/UniversalZWaveSensor/) goes throug
 
 ## What's new
 
+**v5.15** — A sensor's **Online** state now says online from the moment the plugin starts it, and whenever it reports, so **Show Status** no longer calls a working sensor offline. A lock's **Latch Closed** state no longer shows the opposite of the truth. One of the sample messages in **Simulate Z-Wave Report** was labelled the wrong way round, and the old manual inside the plugin has gone, as the guide replaces it.
+
 **v5.14** — The settings window was wider than the screen allowed, so the help text beside each setting was cut off. The help now wraps to fit. No setting or behaviour changed.
 
 **v5.13** — Behind-the-scenes tidying of the code shared with my other plugins. Log lines can no longer come out with the time printed twice.
-
-**v5.12** — New **Run Parser Self-Test** and **Show Status** menu items, a **Low-battery warning at** setting, 7 and 14 day choices for **Stale threshold**, and an Energy Monitor or Plug / Relay shows its power in the device list rather than jumping between readings.
 
 Every version is listed in the [version history](https://highsteads.github.io/UniversalZWaveSensor/changelog.html).
 

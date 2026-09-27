@@ -69,9 +69,9 @@ Sensors report in Celsius or Fahrenheit. The plugin converts every temperature a
 
 ## Sensors that go quiet
 
-Once a minute the plugin looks at when each device last heard from its sensor. If that is longer ago than the **Stale threshold**, the device's **Online** state is set to offline and the Event Log has one warning, such as `No report for 26.3h (threshold 24h) — may be offline or out of range`. The warning is not repeated. The moment the sensor sends anything, the device is set back to online and the log says it is back.
+Each device shows online when the plugin starts it, and every time its sensor sends anything. Once a minute the plugin looks at when each device last heard from its sensor. If that is longer ago than the **Stale threshold**, the device's **Online** state is set to offline and the Event Log has one warning, such as `No report for 26.3h (threshold 24h) — may be offline or out of range`. The warning is not repeated. The moment the sensor sends anything, the device is set back to online and the log says it is back.
 
-A device that has never heard from its sensor is left alone, because there is nothing to measure its silence from.
+A device that has never heard from its sensor stays online, because there is nothing to measure its silence from.
 
 A battery sensor may only report every few hours, or even less often, so give it a threshold well beyond its usual gap.
 

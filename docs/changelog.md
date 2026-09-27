@@ -7,6 +7,14 @@ nav_order: 10
 
 The newest version is at the top.
 
+## 5.15 — 27 September 2026
+
+- A sensor's **Online** state now shows online as soon as the plugin starts the device, and again every time the sensor reports. Before, it only changed when a sensor went quiet or came back, so a sensor that had never gone quiet could be listed as offline in **Show Status**. A sensor still shows offline when it has sent nothing for longer than the **Stale threshold**.
+- One of the sample messages in **Simulate Z-Wave Report** was labelled "motion cleared" when it actually means motion seen. It now shows the right message for motion cleared.
+- The old manual that came inside the plugin has gone. It was out of date, and this guide replaces it.
+- On a lock that reports its latch, **Latch Closed** showed the opposite of the truth, saying closed when the latch was open and open when it was closed. It now matches the lock.
+- If the **Stale threshold** or **Low-battery warning at** setting ever holds something that is not a number, the plugin now warns you in the Event Log and uses 24 hours or 20%, where before it could fail to start.
+
 ## 5.14 — 7 September 2026
 
 The plugin's settings window was wider than the screen allowed, so the help text beside each setting was cut off part-way. The help now sits in its own lines, which wrap to fit. No setting or behaviour changed.

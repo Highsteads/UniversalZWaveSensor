@@ -18,7 +18,7 @@ Every model except **Plug / Relay** carries these as well as its own readings.
 | **Battery %** | The battery level the sensor last reported. If the sensor sends its own "battery low" warning instead of a number, this shows `LOW`. |
 | **Battery Low** | On when the battery is at or below the level set in **Low-battery warning at** (20% to start with), when the sensor sends its own low-battery warning, or when it asks for its battery to be replaced. |
 | **Last Updated** | The date and time of the last message from the sensor, such as `2026-09-27 09:15:04`. |
-| **Online** | Set to offline when the sensor has sent nothing for longer than the **Stale threshold**, and back to online when it next sends anything. Shows `reset` if the sensor reports it has been reset to factory settings. |
+| **Online** | Online from the moment the plugin starts the device, and again every time the sensor sends anything. Set to offline when the sensor has sent nothing for longer than the **Stale threshold**. Shows `reset` if the sensor reports it has been reset to factory settings. |
 | **Wake-up Interval** | How often a battery sensor wakes up on its own, such as `5m 0s`. It only fills in when the sensor reports it. |
 | **Last Raw Report** | The last message the plugin could not read, written as the numbers the sensor sent. It is there to paste into a request for help. |
 
