@@ -7,6 +7,23 @@ nav_order: 10
 
 The newest version is at the top.
 
+## 5.18 — 1 November 2026
+
+- **A device's main on/off state follows only its own kind of report.** Every one of the plugin's devices has a main on/off state, which is what a trigger on "Primary state changes" watches. Every report the plugin decoded used to set it on every device made for that sensor. So a **Contact** device sharing a sensor with a siren showed the door shut when the siren went quiet, and a **Lock** device could be switched by a door contact. Now each report sets it only where it is that device's job:
+
+  | Report | Sets the main state of |
+  |---|---|
+  | Motion, intrusion, glass break | Motion |
+  | Door or window, garage door | Contact |
+  | Lock or unlock | Lock |
+  | Switch on or off, dimmer level | Plug / Relay, Energy Monitor |
+  | Scene buttons | Scene |
+  | Water, smoke, CO, gas, siren, mains power, tamper | Generic only |
+
+  A **Generic Sensor** still follows every report. Each report's own state, such as **Contact** or **Siren Active**, still updates on every device that has it.
+- **Older sensors are unaffected.** A "Basic" report, or an on/off report that does not say what kind it is, still sets every device's main state. Older motion and door sensors use these as their only report.
+- If you have a trigger on the main on/off state of a device that relied on a report of another kind, point it at that report's own state instead, for example **Siren Active** or **Contact**.
+
 ## 5.17 — 1 November 2026
 
 - **"All clear" clears only what has ended.** When a motion sensor's motion stops, or its cover is put back, it sends an "all clear" that says which of the two has ended. The plugin ignored that and cleared both, so motion ending also cleared a **Tamper** that was still active. Now only the event named is cleared. An "all clear" that names nothing, which some older sensors send, still clears both.
