@@ -7,7 +7,16 @@
 #              natively. Uses subscribeToIncoming() to receive ALL Z-Wave bytes.
 # Author:      CliveS & Claude Opus 4.8, Claude Opus 5.5
 # Date:        01-11-2026
-# Version:     5.17
+# Version:     5.18
+#
+# v5.18 (01-11-2026): every report now sets a device's primary on/off state
+# only when that kind of report is the device's job (PRIMARY_FAMILIES):
+# door/barrier -> Contact, lock -> Lock, switch/dimmer -> Plug and Energy,
+# scene -> Scene, alarms and mains power -> Generic only, tamper -> Generic
+# only. Generic devices take everything, as before. Basic reports and
+# general-purpose / untyped Sensor Binary reports still set every device's
+# primary state: they carry no type and older sensors rely on them. 5.17 did
+# this for Home Security events; this does the rest.
 #
 # v5.17 (01-11-2026): a Home Security "all clear" clears only what has ended.
 # * An idle notification (event 0x00) names the event that ended in its first
@@ -416,6 +425,33 @@ THERMOSTAT_SETPOINT_TYPES = {
 # New typed device types (v5.1+) use deviceTypeId; legacy zwaveSensor type
 # reads from pluginProps["sensorType"] via _sensor_type() fallback.
 # ==============================================================================
+# Which reports may set a device's primary on/off state (onOffState), by the
+# device's sensor type (5.18). A report belongs to a family; the primary state
+# changes only when the device's type lists that family, or the device is
+# Generic. Before 5.18 every report set every device's primary state, so a
+# door contact sharing a node with a motion sensor, a siren or a mains-power
+# monitor was switched by those. Basic reports and general-purpose / untyped
+# Sensor Binary reports carry no type, mean "the sensor's main thing", and
+# still set every device's primary state (they bypass this table).
+# Alarms (water, smoke, CO, gas, siren) and mains power belong to Generic,
+# which is where docs/devices.md puts them.
+PRIMARY_FAMILIES = {
+    "motion":  ("motion",),
+    "contact": ("contact",),
+    "lock":    ("lock",),
+    "plug":    ("switch",),
+    "energy":  ("switch",),
+    "scene":   ("scene",),
+}
+BINARY_PRIMARY_FAMILY = {
+    "motion":    "motion",
+    "contact":   "contact",
+    "smoke":     "alarm",
+    "coAlarm":   "alarm",
+    "waterLeak": "alarm",
+    "tamper":    "tamper",
+}
+
 DEVICE_TYPE_SENSOR_TYPE = {
     "zwaveSensorMotion":      "motion",
     "zwaveSensorContact":     "contact",
@@ -535,6 +571,13 @@ class Plugin(indigo.PluginBase):
         if device.deviceTypeId in DEVICE_TYPE_SENSOR_TYPE:
             return DEVICE_TYPE_SENSOR_TYPE[device.deviceTypeId]
         return device.pluginProps.get("sensorType", "generic")
+
+    def _set_primary(self, device, family, value):
+        """Write onOffState only if a report of this family is this device's job.
+        See PRIMARY_FAMILIES. Generic devices take every family."""
+        dev_type = self._sensor_type(device)
+        if dev_type == "generic" or family in PRIMARY_FAMILIES.get(dev_type, ()):
+            device.updateStateOnServer("onOffState", value=value)
 
     def _safe_update(self, device, state_id, **kwargs):
         """Update a device state only if that state exists on the device type.
@@ -1098,7 +1141,14 @@ class Plugin(indigo.PluginBase):
                       or (state_key == "contact" and dev_type == "contact"))
         self.logger.debug(f"{device.name}: {state_key} = {label}")
         self._safe_update(device, state_key,    value=is_active, uiValue=label)
-        device.updateStateOnServer("onOffState", value=is_active)
+        # A general-purpose or untyped report means "this sensor's main thing",
+        # so it sets every device's primary state, as before. A typed one sets
+        # it only where that type is the device's job (5.18).
+        family = BINARY_PRIMARY_FAMILY.get(state_key)
+        if family is None:
+            device.updateStateOnServer("onOffState", value=is_active)
+        else:
+            self._set_primary(device, family, is_active)
         if is_primary:
             self._safe_update(device, "displayStatus", value=label)
         self._touch(device)
@@ -1176,13 +1226,13 @@ class Plugin(indigo.PluginBase):
             if notif_event == AC_DOOR_OPEN:
                 _log_c(f"{device.name}: Door/Window OPEN")
                 self._safe_update(device, "contact",    value=True,  uiValue="open")
-                device.updateStateOnServer("onOffState", value=True)
+                self._set_primary(device, "contact", True)
                 if _contact_disp:
                     self._safe_update(device, "displayStatus", value="open")
             elif notif_event == AC_DOOR_CLOSED:
                 _log_c(f"{device.name}: Door/Window CLOSED")
                 self._safe_update(device, "contact",    value=False, uiValue="closed")
-                device.updateStateOnServer("onOffState", value=False)
+                self._set_primary(device, "contact", False)
                 if _contact_disp:
                     self._safe_update(device, "displayStatus", value="closed")
             elif notif_event in (AC_MANUAL_LOCK, AC_RF_LOCK, AC_KEYPAD_LOCK, AC_AUTO_LOCK):
@@ -1190,7 +1240,7 @@ class Plugin(indigo.PluginBase):
                 user_str = f" user={user_id}" if user_id else ""
                 _log_l(f"{device.name}: Lock LOCKED (event=0x{notif_event:02X}){user_str}")
                 self._safe_update(device, "lockState",  value=True,  uiValue="locked")
-                device.updateStateOnServer("onOffState", value=True)
+                self._set_primary(device, "lock", True)
                 if user_id is not None:
                     self._safe_update(device, "lastUser", value=user_id)
                 if _lock_disp:
@@ -1200,7 +1250,7 @@ class Plugin(indigo.PluginBase):
                 user_str = f" user={user_id}" if user_id else ""
                 _log_l(f"{device.name}: Lock UNLOCKED (event=0x{notif_event:02X}){user_str}")
                 self._safe_update(device, "lockState",  value=False, uiValue="unlocked")
-                device.updateStateOnServer("onOffState", value=False)
+                self._set_primary(device, "lock", False)
                 if user_id is not None:
                     self._safe_update(device, "lastUser", value=user_id)
                 if _lock_disp:
@@ -1220,12 +1270,12 @@ class Plugin(indigo.PluginBase):
             if notif_event in (0x01, 0x02):
                 self.logger.info(f"{device.name}: Water LEAK detected")
                 self._safe_update(device, "waterLeak",     value=True,  uiValue="leak")
-                device.updateStateOnServer("onOffState",    value=True)
+                self._set_primary(device, "alarm", True)
                 self._safe_update(device, "displayStatus", value="leak")
             elif notif_event == 0x00 or notif_status == 0x00:
                 self.logger.info(f"{device.name}: Water leak CLEARED")
                 self._safe_update(device, "waterLeak",     value=False, uiValue="clear")
-                device.updateStateOnServer("onOffState",    value=False)
+                self._set_primary(device, "alarm", False)
                 self._safe_update(device, "displayStatus", value="clear")
             else:
                 self.logger.info(f"{device.name}: WATER event=0x{notif_event:02X} (no state mapping)")
@@ -1236,12 +1286,12 @@ class Plugin(indigo.PluginBase):
             if notif_event in (0x01, 0x02):
                 self.logger.info(f"{device.name}: Smoke DETECTED")
                 self._safe_update(device, "smoke",         value=True,  uiValue="smoke")
-                device.updateStateOnServer("onOffState",    value=True)
+                self._set_primary(device, "alarm", True)
                 self._safe_update(device, "displayStatus", value="smoke")
             elif notif_event == 0x00:
                 self.logger.info(f"{device.name}: Smoke CLEARED")
                 self._safe_update(device, "smoke",         value=False, uiValue="clear")
-                device.updateStateOnServer("onOffState",    value=False)
+                self._set_primary(device, "alarm", False)
                 self._safe_update(device, "displayStatus", value="clear")
             else:
                 self.logger.info(f"{device.name}: SMOKE event=0x{notif_event:02X} (no state mapping)")
@@ -1252,12 +1302,12 @@ class Plugin(indigo.PluginBase):
             if notif_event in (0x01, 0x02):
                 self.logger.info(f"{device.name}: CO ALARM")
                 self._safe_update(device, "coAlarm",       value=True,  uiValue="alarm")
-                device.updateStateOnServer("onOffState",    value=True)
+                self._set_primary(device, "alarm", True)
                 self._safe_update(device, "displayStatus", value="alarm")
             elif notif_event == 0x00:
                 self.logger.info(f"{device.name}: CO alarm CLEARED")
                 self._safe_update(device, "coAlarm",       value=False, uiValue="clear")
-                device.updateStateOnServer("onOffState",    value=False)
+                self._set_primary(device, "alarm", False)
                 self._safe_update(device, "displayStatus", value="clear")
             else:
                 self.logger.info(f"{device.name}: CO event=0x{notif_event:02X} (no state mapping)")
@@ -1271,11 +1321,11 @@ class Plugin(indigo.PluginBase):
                 self._safe_update(device, "batteryLow", value=True)
             elif notif_event == PM_AC_DISCONNECTED:
                 self.logger.warning(f"{device.name}: AC mains DISCONNECTED")
-                device.updateStateOnServer("onOffState",    value=False)
+                self._set_primary(device, "power", False)
                 self._safe_update(device, "displayStatus", value="AC off")
             elif notif_event == PM_AC_RECONNECTED:
                 self.logger.info(f"{device.name}: AC mains RECONNECTED")
-                device.updateStateOnServer("onOffState",    value=True)
+                self._set_primary(device, "power", True)
                 self._safe_update(device, "displayStatus", value="AC on")
             elif notif_event == PM_OVER_CURRENT:
                 self.logger.warning(f"{device.name}: Over-current DETECTED")
@@ -1337,12 +1387,12 @@ class Plugin(indigo.PluginBase):
             if notif_event == 0x01:
                 self.logger.warning(f"{device.name}: Siren ACTIVE")
                 self._safe_update(device, "sirenActive",   value=True,  uiValue="active")
-                device.updateStateOnServer("onOffState",    value=True)
+                self._set_primary(device, "alarm", True)
                 self._safe_update(device, "displayStatus", value="active")
             elif notif_event == 0x00:
                 self.logger.info(f"{device.name}: Siren silenced")
                 self._safe_update(device, "sirenActive",   value=False, uiValue="silent")
-                device.updateStateOnServer("onOffState",    value=False)
+                self._set_primary(device, "alarm", False)
                 self._safe_update(device, "displayStatus", value="silent")
             else:
                 self.logger.info(f"{device.name}: SIREN event=0x{notif_event:02X} (no state mapping)")
@@ -1372,12 +1422,12 @@ class Plugin(indigo.PluginBase):
             if notif_event in (0x01, 0x02, 0x03, 0x04):
                 self.logger.warning(f"{device.name}: GAS leak detected")
                 self._safe_update(device, "gasLeak",       value=True,  uiValue="leak")
-                device.updateStateOnServer("onOffState",    value=True)
+                self._set_primary(device, "alarm", True)
                 self._safe_update(device, "displayStatus", value="gas leak")
             elif notif_event == 0x00:
                 self.logger.info(f"{device.name}: Gas alarm CLEARED")
                 self._safe_update(device, "gasLeak",       value=False, uiValue="clear")
-                device.updateStateOnServer("onOffState",    value=False)
+                self._set_primary(device, "alarm", False)
                 self._safe_update(device, "displayStatus", value="clear")
             else:
                 self.logger.info(f"{device.name}: GAS event=0x{notif_event:02X} (no state mapping)")
@@ -1603,7 +1653,7 @@ class Plugin(indigo.PluginBase):
         label = "on" if is_on else "off"
         self.logger.info(f"{device.name}: Switch = {label}")
         self._safe_update(device, "switchState",   value=is_on, uiValue=label)
-        device.updateStateOnServer("onOffState",    value=is_on)
+        self._set_primary(device, "switch", is_on)
         self._safe_update(device, "displayStatus", value=label)
         self._touch(device)
         return True
@@ -1624,7 +1674,7 @@ class Plugin(indigo.PluginBase):
         self.logger.info(f"{device.name}: Dim level = {level}%")
         self._safe_update(device, "dimLevel",      value=level, uiValue=f"{level}%")
         self._safe_update(device, "switchState",   value=is_on)
-        device.updateStateOnServer("onOffState",    value=is_on)
+        self._set_primary(device, "switch", is_on)
         self._safe_update(device, "displayStatus", value=display_str)
         self._touch(device)
         return True
@@ -1684,7 +1734,7 @@ class Plugin(indigo.PluginBase):
         self.logger.info(f"{device.name}: Barrier = {label}")
         self._safe_update(device, "contact", value=is_open,
                           uiValue="open" if is_open else "closed")
-        device.updateStateOnServer("onOffState", value=is_open)
+        self._set_primary(device, "contact", is_open)
         self._safe_update(device, "displayStatus", value=label)
         self._touch(device)
         return True
@@ -1745,7 +1795,7 @@ class Plugin(indigo.PluginBase):
         self._safe_update(device, "sceneTimestamp",  value=ts)
         self._safe_update(device, "displayStatus",    value=disp_str)
         # onOffState: True on press/held/double, False on release
-        device.updateStateOnServer("onOffState",      value=(action_code != CS_KEY_RELEASED))
+        self._set_primary(device, "scene", (action_code != CS_KEY_RELEASED))
         self._touch(device)
         return True
 
@@ -1783,7 +1833,7 @@ class Plugin(indigo.PluginBase):
         self.logger.info(f"{device.name}: Lock {label} (mode=0x{mode:02X})")
         self._safe_update(device, "lockState",     value=is_locked, uiValue=label)
         self._safe_update(device, "lockMode",      value=mode)
-        device.updateStateOnServer("onOffState",    value=is_locked)
+        self._set_primary(device, "lock", is_locked)
         self._safe_update(device, "displayStatus", value=label)
         device.updateStateImageOnServer(
             indigo.kStateImageSel.SensorTripped if is_locked
@@ -1829,7 +1879,7 @@ class Plugin(indigo.PluginBase):
         self._safe_update(device, "lastSceneAction", value="activated")
         self._safe_update(device, "sceneTimestamp",  value=ts)
         self._safe_update(device, "displayStatus",    value=f"S{scene_id} activated")
-        device.updateStateOnServer("onOffState",      value=True)
+        self._set_primary(device, "scene", True)
         self._touch(device)
         return True
 
