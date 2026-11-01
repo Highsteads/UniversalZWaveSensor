@@ -9,12 +9,13 @@
 #                packages/cc/src/lib/_Types.ts          (enum BinarySensorType)
 #                packages/core/src/registries/Sensors.ts (multilevel sensor types)
 #                packages/core/src/registries/Notifications.ts
-#              The two code tables were corrected in v5.16; BINARY_BUG and
-#              MULTILEVEL_BUG now record what the tests below guard against.
-#              The idle-event fault is still open and stays xfail(strict=True).
+#              The two code tables were corrected in v5.16 and the idle handling
+#              in v5.17; BINARY_BUG, MULTILEVEL_BUG and IDLE_BUG now record what
+#              the tests below guard against. The idle rule follows zwave-js
+#              15.31.2, lib/node/CCHandlers/NotificationCC.js.
 # Author:      CliveS & Claude Opus 5.5
 # Date:        01-11-2026
-# Version:     1.1
+# Version:     1.2
 
 import pytest
 
@@ -121,13 +122,12 @@ def test_a_current_report_does_not_land_in_watts():
 
 # ------------------------------------------------------------ idle events
 
-IDLE_BUG = ("BUG: a Home Security 'idle' notification (event 0x00) names the event "
+IDLE_BUG = ("Fixed in v5.17. A Home Security 'idle' notification (event 0x00) names the event "
             "that ended in its first event parameter, but _handle_notification clears "
             "motion AND tamper on every idle, and writes onOffState=False whatever the "
             "device type. Motion ending clears a tamper that is still active.")
 
 
-@pytest.mark.xfail(strict=True, reason=IDLE_BUG)
 def test_motion_ending_does_not_clear_an_active_tamper():
     p = make_plugin()
     dev = MockDevice(1, "Hall PIR", plugin_props={"sensorType": "motion"})
@@ -139,7 +139,6 @@ def test_motion_ending_does_not_clear_an_active_tamper():
     assert dev.states.get("tamper") is True, "the cover is still off"
 
 
-@pytest.mark.xfail(strict=True, reason=IDLE_BUG)
 def test_a_tamper_clearing_does_not_close_a_door_contact():
     p = make_plugin()
     dev = MockDevice(1, "Back Door", plugin_props={"sensorType": "contact"})
@@ -236,3 +235,91 @@ def test_a_binary_type_with_no_state_of_its_own_only_sets_the_primary_state(code
     assert dev.state_writes["onOffState"]["value"] is True
     for key in ("motion", "tamper", "waterLeak", "contact"):
         assert key not in dev.state_writes, f"0x{code:02X} wrote {key}"
+
+
+# ------------------------------------------------------------ v5.17 idle rule
+
+def _hs(p, dev, event, *params):
+    """Send a Home Security notification, with event parameters if given."""
+    frame = [0x71, 0x05, 0, 0, 0, 0xFF, 0x07, event, len(params)] + list(params)
+    p._handle_notification(dev, frame)
+
+
+def test_tamper_ending_leaves_active_motion_alone():
+    p = make_plugin()
+    dev = MockDevice(1, "Hall PIR", plugin_props={"sensorType": "motion"})
+    _hs(p, dev, 0x08)                 # motion
+    _hs(p, dev, 0x03)                 # cover off
+    _hs(p, dev, 0x00, 0x03)           # idle: the cover went back on
+    assert dev.states.get("tamper") is False
+    assert dev.states.get("motion") is True
+    assert dev.states.get("onOffState") is True
+    assert dev.states.get("displayStatus") == "detected"
+
+
+def test_motion_ending_with_tamper_still_active_shows_tamper():
+    p = make_plugin()
+    dev = MockDevice(1, "Hall PIR", plugin_props={"sensorType": "motion"})
+    _hs(p, dev, 0x03)
+    _hs(p, dev, 0x08)
+    _hs(p, dev, 0x00, 0x08)
+    assert dev.states.get("onOffState") is False
+    assert dev.states.get("displayStatus") == "tamper"
+
+
+@pytest.mark.parametrize("named", [0x01, 0x02, 0x05, 0x06, 0x07, 0x08])
+def test_each_event_recorded_as_motion_clears_motion_when_it_ends(named):
+    p = make_plugin()
+    dev = MockDevice(1, "Hall PIR", plugin_props={"sensorType": "motion"})
+    _hs(p, dev, named)
+    _hs(p, dev, 0x00, named)
+    assert dev.states.get("motion") is False
+
+
+def test_an_idle_naming_nothing_clears_everything():
+    p = make_plugin()
+    dev = MockDevice(1, "Hall PIR", plugin_props={"sensorType": "motion"})
+    _hs(p, dev, 0x08)
+    _hs(p, dev, 0x03)
+    _hs(p, dev, 0x00)                 # no event parameter
+    assert dev.states.get("motion") is False
+    assert dev.states.get("tamper") is False
+    assert dev.states.get("displayStatus") == "clear"
+
+
+def test_an_idle_for_an_event_with_no_state_here_changes_nothing():
+    p = make_plugin()
+    dev = MockDevice(1, "Hall PIR", plugin_props={"sensorType": "motion"})
+    _hs(p, dev, 0x08)
+    dev.state_writes.clear()
+    _hs(p, dev, 0x00, 0x0B)           # e.g. an event this plugin does not record
+    for key in ("motion", "tamper", "onOffState", "displayStatus"):
+        assert key not in dev.state_writes, f"wrote {key}"
+
+
+def test_the_event_parameter_length_ignores_the_sequence_bits():
+    """Bits 5-7 of the properties byte are flags, not part of the length."""
+    p = make_plugin()
+    dev = MockDevice(1, "Hall PIR", plugin_props={"sensorType": "motion"})
+    _hs(p, dev, 0x08)
+    _hs(p, dev, 0x03)
+    p._handle_notification(dev, [0x71, 0x05, 0, 0, 0, 0xFF, 0x07, 0x00, 0x81, 0x03])
+    assert dev.states.get("motion") is True and dev.states.get("tamper") is False
+
+
+@pytest.mark.parametrize("event", [0x08, 0x02, 0x06])
+def test_motion_on_a_door_contact_does_not_open_the_door(event):
+    p = make_plugin()
+    dev = MockDevice(1, "Back Door", plugin_props={"sensorType": "contact"})
+    p._handle_notification(dev, [0x71, 0x05, 0, 0, 0, 0xFF, 0x06, 0x17, 0x00])  # closed
+    _hs(p, dev, event)
+    assert dev.states.get("onOffState") is False
+
+
+def test_a_generic_device_still_follows_motion():
+    p = make_plugin()
+    dev = MockDevice(1, "Multi", plugin_props={"sensorType": "generic"})
+    _hs(p, dev, 0x08)
+    assert dev.states.get("onOffState") is True
+    _hs(p, dev, 0x00, 0x08)
+    assert dev.states.get("onOffState") is False
