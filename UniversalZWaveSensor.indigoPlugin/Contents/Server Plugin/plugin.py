@@ -6,8 +6,26 @@
 #              (temperature, humidity, contact, etc.) that Indigo does not expose
 #              natively. Uses subscribeToIncoming() to receive ALL Z-Wave bytes.
 # Author:      CliveS & Claude Opus 4.8, Claude Opus 5.5
-# Date:        27-09-2026
-# Version:     5.15
+# Date:        01-11-2026
+# Version:     5.16
+#
+# v5.16 (01-11-2026): the two Z-Wave code tables now follow the Z-Wave standard
+# (checked against the zwave-js project's definitions).
+# * SENSOR_BINARY types: 0x06 is Water (was read as tamper), 0x08 is Tamper (was
+#   motion), 0x04 is CO2 (was a water leak), and 0x09 Aux / 0x0B Tilt are no
+#   longer read as motion. Types the plugin has no state for (CO2, heat, freeze,
+#   aux, tilt, glass break) set only the primary on/off state, as an unknown
+#   type always has.
+# * SENSOR_MULTILEVEL types: right up to 0x09 before, but from 0x0B nearly every
+#   entry named the wrong reading, e.g. Current (0x10) was written to watts and
+#   CO2 (0x11) to UV index. Corrected, with velocity (0x06), loudness (0x1E),
+#   target temperature (0x22), PM2.5 (0x23) and VOC (0x27) at their real codes.
+#   Codes with no matching state (dew point, weight, tank capacity, angle,
+#   seismic intensity, resistivity) are now reported as unknown instead of
+#   being written to an unrelated state.
+# * Each reading's unit follows the scale the sensor sends: millivolts and
+#   milliamps are converted to V and A so the voltage and current states stay
+#   in one unit, and a target temperature is converted like a temperature.
 #
 # v5.15 (27-09-2026): Online state set True when a device starts or reports,
 # False only on the stale path; simulateReport example for "motion cleared"
@@ -174,41 +192,62 @@ CMD_VERSION_REPORT              = 0x12   # CC 0x86, "what firmware are you runni
 # key  -> (state_id, default_unit)
 # ==============================================================================
 SENSOR_TYPES = {
+    # Codes per the Z-Wave Sensor Multilevel command class (zwave-js
+    # Sensors.ts, checked 01-11-2026). Before v5.16 the entries from 0x0B up
+    # named the wrong reading. A code not listed here is logged as unknown.
     0x01: ("temperature",         "degC"),
     0x03: ("luminance",           "lux"),
-    0x04: ("watts",               "W"),    # general power (alt to type 0x10)
+    0x04: ("watts",               "W"),    # power
     0x05: ("humidity",            "%"),
-    0x08: ("pressure",            "kPa"),
-    0x09: ("atmosphericPressure", "kPa"),  # scale=1 -> inHg
-    0x0B: ("velocity",            "m/s"),
-    0x0E: ("targetTemperature",   "degC"), # thermostat-style target temp via multilevel
-    0x0F: ("co2Level",            "ppm"),
-    0x10: ("watts",               "W"),    # power (reuses energy meter state)
-    0x11: ("uvIndex",             ""),
-    0x12: ("voltage",             "V"),    # reuses meter voltage state
-    0x13: ("current",             "A"),    # reuses meter current state
-    0x15: ("airFlow",             "m3/h"),
-    0x19: ("voc",                 "ppm"),
-    0x1B: ("noise",               "dB"),
-    0x1C: ("soilMoisture",        "%"),
-    0x1F: ("pm25",                "ug/m3"),
+    0x06: ("velocity",            "m/s"),
+    0x08: ("pressure",            "kPa"),  # atmospheric pressure
+    0x09: ("atmosphericPressure", "kPa"),  # barometric pressure; scale=1 -> inHg
+    0x0F: ("voltage",             "V"),
+    0x10: ("current",             "A"),
+    0x11: ("co2Level",            "ppm"),
+    0x12: ("airFlow",             "m3/h"),
+    0x1B: ("uvIndex",             ""),
+    0x1E: ("noise",               "dB"),   # loudness
+    0x1F: ("soilMoisture",        "%"),    # moisture
+    0x22: ("targetTemperature",   "degC"),
+    0x23: ("pm25",                "ug/m3"),
+    0x27: ("voc",                 "ppm"),
 }
+
+# Scales other than 0 for the codes above, as (unit, multiplier). The value is
+# multiplied so a state keeps one unit whatever the sensor sends: millivolts and
+# milliamps become V and A. A scale missing here keeps the default unit.
+# (Temperature, target temperature and luminance are handled in the parser.)
+SENSOR_SCALES = {
+    0x06: {1: ("mph",   1.0)},
+    0x0F: {1: ("V",     0.001)},          # millivolts
+    0x10: {1: ("A",     0.001)},          # milliamps
+    0x12: {1: ("cfm",   1.0)},
+    0x1E: {1: ("dBA",   1.0)},
+    0x1F: {1: ("m3/m3", 1.0), 2: ("kOhm", 1.0), 3: ("aw", 1.0)},
+    0x23: {0: ("mol/m3", 1.0), 1: ("ug/m3", 1.0)},
+    0x27: {0: ("mol/m3", 1.0), 1: ("ppm",   1.0)},
+}
+TEMPERATURE_TYPES = (0x01, 0x22)          # converted to the user's degC / degF
 
 # ==============================================================================
 # SENSOR_BINARY (0x30) sensor type lookup
 # key  -> state_id
 # ==============================================================================
+# Codes per the Z-Wave Sensor Binary command class (zwave-js BinarySensorType,
+# checked 01-11-2026): 0x01 general purpose, 0x02 smoke, 0x03 CO, 0x04 CO2,
+# 0x05 heat, 0x06 water, 0x07 freeze, 0x08 tamper, 0x09 aux, 0x0A door/window,
+# 0x0B tilt, 0x0C motion, 0x0D glass break. Before v5.16 several were wrong (a
+# water report set "tamper", a tamper report set "motion"). Codes with no state
+# of their own here fall back to onOffState in _handle_binary_sensor.
 BINARY_SENSOR_TYPES = {
     0x01: "onOffState",    # general purpose
     0x02: "smoke",
-    0x03: "coAlarm",
-    0x04: "waterLeak",
-    0x06: "tamper",
-    0x08: "motion",
-    0x09: "motion",        # PIR alternative
+    0x03: "coAlarm",       # CO (carbon monoxide)
+    0x06: "waterLeak",     # water
+    0x08: "tamper",
     0x0A: "contact",       # door / window
-    0x0B: "motion",        # movement alternative
-    0x0C: "motion",        # motion sensor (Z-Wave SENSOR_BINARY v2 type 0x0C)
+    0x0C: "motion",
 }
 
 # ==============================================================================
@@ -966,7 +1005,7 @@ class Plugin(indigo.PluginBase):
         state_key, default_unit = SENSOR_TYPES[sensor_type]
 
         # Resolve unit; apply temperature unit preference with conversion if needed
-        if sensor_type == 0x01:   # temperature
+        if sensor_type in TEMPERATURE_TYPES:   # temperature, target temperature
             reported_unit = "degC" if scale == 0 else "degF"
             if reported_unit != self.temp_unit:
                 if self.temp_unit == "degF":
@@ -977,6 +1016,11 @@ class Plugin(indigo.PluginBase):
             unit = self.temp_unit
         elif sensor_type == 0x03:  # luminance
             unit = "%" if scale == 0 else "lux"
+        elif scale in SENSOR_SCALES.get(sensor_type, {}):
+            unit, factor = SENSOR_SCALES[sensor_type][scale]
+            if factor != 1.0:
+                value = value * factor
+                precision += 3            # mV -> V keeps its resolution
         else:
             unit = default_unit
 
@@ -2253,7 +2297,7 @@ class Plugin(indigo.PluginBase):
             ("Meter power 1500W",  "32 02 01 12 05 DC", "watts"),
             ("Barrier open",       "66 03 FF",          "contact"),
             ("Central scene 2x",   "5B 03 02 03 02",    "lastSceneAction"),
-            ("Supervision+motion", "6C 01 2A 04 30 03 FF 08", "motion"),
+            ("Supervision+motion", "6C 01 2A 04 30 03 FF 0C", "motion"),
         ]
 
         w = 78
