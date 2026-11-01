@@ -2,7 +2,7 @@
 
 **Show the readings Indigo leaves out when it does not fully know a Z-Wave sensor, as Indigo devices of their own.**
 
-**Version:** 5.15 | **Author:** CliveS & Claude | **Needs:** Indigo 2022.1 or later, with a Z-Wave interface
+**Version:** 5.16 | **Author:** CliveS & Claude | **Needs:** Indigo 2022.1 or later, with a Z-Wave interface
 
 **[Read the full guide](https://highsteads.github.io/UniversalZWaveSensor/)** — setting up, what everything means, and what to do when something goes wrong.
 
@@ -52,6 +52,8 @@ Any Z-Wave device you have already added to your network through Indigo, so that
 The [full guide](https://highsteads.github.io/UniversalZWaveSensor/) goes through each step, explains every setting, and shows how to work out which readings a sensor can send when Indigo made only one device.
 
 ## What's new
+
+**v5.16** — Some sensor readings were filed under the wrong name. A water sensor using the older binary report showed as **Tamper** rather than **Water Leak**, a tamper showed as **Motion**, and readings such as current, voltage and CO2 landed in the wrong state, so a plug's current in amps appeared as its power in watts. The plugin's lookup tables now follow the Z-Wave standard. A reading the plugin has no state for is now reported as unknown rather than stored somewhere wrong.
 
 **v5.15** — A sensor's **Online** state now says online from the moment the plugin starts it, and whenever it reports, so **Show Status** no longer calls a working sensor offline. A lock's **Latch Closed** state no longer shows the opposite of the truth. One of the sample messages in **Simulate Z-Wave Report** was labelled the wrong way round, and the old manual inside the plugin has gone, as the guide replaces it.
 

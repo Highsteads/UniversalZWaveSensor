@@ -803,9 +803,9 @@ class TestHandleMultilevel(unittest.TestCase):
         self.assertNotIn("SensorOn", dev.image_writes)
 
     def test_co2_850_ppm(self):
-        """850 ppm CO2: sensor=0x0F, precision=0, scale=0, size=2"""
+        """850 ppm CO2: sensor=0x11 (CO2 in the Z-Wave standard), precision=0, scale=0, size=2"""
         pss = self._prec_scale_size(0, 0, 2)
-        raw = [0x31, 0x05, 0x0F, pss] + list(struct.pack(">H", 850))
+        raw = [0x31, 0x05, 0x11, pss] + list(struct.pack(">H", 850))
         dev = self._dev("generic")
         self.assertTrue(self.p._handle_multilevel(dev, raw))
         self.assertAlmostEqual(dev.state_writes["co2Level"]["value"], 850.0)
@@ -842,16 +842,16 @@ class TestHandleBinarySensor(unittest.TestCase):
                           plugin_props={"sensorType": sensor_type})
 
     def test_motion_detected(self):
-        """0xFF + type=0x08 (PIR) -> motion=True, displayStatus=detected."""
+        """0xFF + type=0x0C (Motion) -> motion=True, displayStatus=detected."""
         dev = self._dev("motion")
-        self.assertTrue(self.p._handle_binary_sensor(dev, [0x30, 0x03, 0xFF, 0x08]))
+        self.assertTrue(self.p._handle_binary_sensor(dev, [0x30, 0x03, 0xFF, 0x0C]))
         self.assertTrue(dev.state_writes["motion"]["value"])
         self.assertEqual(dev.state_writes["displayStatus"]["value"], "detected")
 
     def test_motion_clear(self):
-        """0x00 + type=0x08 -> motion=False, displayStatus=clear."""
+        """0x00 + type=0x0C -> motion=False, displayStatus=clear."""
         dev = self._dev("motion")
-        self.assertTrue(self.p._handle_binary_sensor(dev, [0x30, 0x03, 0x00, 0x08]))
+        self.assertTrue(self.p._handle_binary_sensor(dev, [0x30, 0x03, 0x00, 0x0C]))
         self.assertFalse(dev.state_writes["motion"]["value"])
         self.assertEqual(dev.state_writes["displayStatus"]["value"], "clear")
 
@@ -870,9 +870,9 @@ class TestHandleBinarySensor(unittest.TestCase):
         self.assertEqual(dev.state_writes["displayStatus"]["value"], "closed")
 
     def test_water_leak(self):
-        """0xFF + type=0x04 -> waterLeak=True, displayStatus=leak."""
+        """0xFF + type=0x06 (Water) -> waterLeak=True, displayStatus=leak."""
         dev = self._dev("generic")
-        self.assertTrue(self.p._handle_binary_sensor(dev, [0x30, 0x03, 0xFF, 0x04]))
+        self.assertTrue(self.p._handle_binary_sensor(dev, [0x30, 0x03, 0xFF, 0x06]))
         self.assertTrue(dev.state_writes["waterLeak"]["value"])
         self.assertEqual(dev.state_writes["waterLeak"]["uiValue"], "leak")
 
@@ -883,9 +883,9 @@ class TestHandleBinarySensor(unittest.TestCase):
         self.assertTrue(dev.state_writes["smoke"]["value"])
 
     def test_tamper(self):
-        """0xFF + type=0x06 -> tamper=True."""
+        """0xFF + type=0x08 (Tamper) -> tamper=True."""
         dev = self._dev("generic")
-        self.assertTrue(self.p._handle_binary_sensor(dev, [0x30, 0x03, 0xFF, 0x06]))
+        self.assertTrue(self.p._handle_binary_sensor(dev, [0x30, 0x03, 0xFF, 0x08]))
         self.assertTrue(dev.state_writes["tamper"]["value"])
 
     def test_v1_no_type_byte_fallback(self):
@@ -2002,7 +2002,7 @@ class TestTripleNestedEncapsulation(unittest.TestCase):
         self.p = make_plugin()
 
     def test_crc16_multichannel_supervision_nest(self):
-        inner = [0x30, 0x03, 0xFF, 0x08]          # SENSOR_BINARY motion active
+        inner = [0x30, 0x03, 0xFF, 0x0C]          # SENSOR_BINARY motion (type 0x0C) active
         sup   = [0x6C, 0x01, 0x2A, len(inner)] + inner
         mc    = [0x60, 0x0D, 0x01, 0x00] + sup    # src_ep=1
         crc   = [0x56, 0x01] + mc + [0xAB, 0xCD]

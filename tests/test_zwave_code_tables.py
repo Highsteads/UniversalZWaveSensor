@@ -9,13 +9,12 @@
 #                packages/cc/src/lib/_Types.ts          (enum BinarySensorType)
 #                packages/core/src/registries/Sensors.ts (multilevel sensor types)
 #                packages/core/src/registries/Notifications.ts
-#              Each mismatch that is a real fault is xfail(strict=True) with the
-#              fault in the reason, so the suite stays green today and goes red
-#              (XPASS) the moment the table is corrected, prompting removal of
-#              the marker.
+#              The two code tables were corrected in v5.16; BINARY_BUG and
+#              MULTILEVEL_BUG now record what the tests below guard against.
+#              The idle-event fault is still open and stays xfail(strict=True).
 # Author:      CliveS & Claude Opus 5.5
 # Date:        01-11-2026
-# Version:     1.0
+# Version:     1.1
 
 import pytest
 
@@ -39,13 +38,13 @@ MULTILEVEL_STANDARD = {0x01: "Air temperature", 0x03: "Illuminance", 0x04: "Powe
                        0x19: "Seismic intensity", 0x1B: "Ultraviolet",
                        0x1C: "Electrical resistivity", 0x1F: "Moisture"}
 
-BINARY_BUG = ("BUG: BINARY_SENSOR_TYPES does not follow the Z-Wave Sensor Binary "
+BINARY_BUG = ("Fixed in v5.16. BINARY_SENSOR_TYPES did not follow the Z-Wave Sensor Binary "
               "types: 0x04 is CO2 (plugin: waterLeak), 0x06 is Water (plugin: "
               "tamper), 0x08 is Tamper (plugin: motion), 0x09 Aux and 0x0B Tilt "
               "(plugin: motion). A leak reported this way sets 'tamper', not "
               "'waterLeak'; a cover-removed tamper sets 'motion'.")
 
-MULTILEVEL_BUG = ("BUG: SENSOR_TYPES is right up to 0x09 but wrong from 0x0B: 0x0F is "
+MULTILEVEL_BUG = ("Fixed in v5.16. SENSOR_TYPES was right up to 0x09 but wrong from 0x0B: 0x0F is "
                   "Voltage (plugin: co2Level), 0x10 Current (plugin: watts), 0x11 CO2 "
                   "(plugin: uvIndex), 0x12 Air flow (plugin: voltage), 0x13 Tank "
                   "capacity (plugin: current), 0x1B Ultraviolet (plugin: noise), "
@@ -80,7 +79,6 @@ def test_notification_codes_match_the_standard(name, code):
 
 # ------------------------------------------------------------ the binary table
 
-@pytest.mark.xfail(strict=True, reason=BINARY_BUG)
 def test_binary_table_follows_the_standard():
     wrong = {code: P.BINARY_SENSOR_TYPES[code] for code in (0x04, 0x06, 0x08, 0x09, 0x0B)
              if code in P.BINARY_SENSOR_TYPES}
@@ -91,7 +89,6 @@ def test_binary_table_follows_the_standard():
     assert P.BINARY_SENSOR_TYPES.get(0x0B) != "motion"
 
 
-@pytest.mark.xfail(strict=True, reason=BINARY_BUG)
 def test_a_binary_water_report_sets_water_leak():
     p = make_plugin()
     dev = MockDevice(1, "Kitchen Leak", plugin_props={"sensorType": "generic"})
@@ -99,7 +96,6 @@ def test_a_binary_water_report_sets_water_leak():
     assert dev.states.get("waterLeak") is True
 
 
-@pytest.mark.xfail(strict=True, reason=BINARY_BUG)
 def test_a_binary_tamper_report_is_not_motion():
     p = make_plugin()
     dev = MockDevice(1, "Hall PIR", plugin_props={"sensorType": "generic"})
@@ -110,13 +106,11 @@ def test_a_binary_tamper_report_is_not_motion():
 
 # ------------------------------------------------------------ the multilevel table
 
-@pytest.mark.xfail(strict=True, reason=MULTILEVEL_BUG)
 def test_multilevel_table_follows_the_standard():
     expect = {0x0F: "voltage", 0x10: "current", 0x11: "co2Level"}
     assert {k: P.SENSOR_TYPES[k][0] for k in expect} == expect
 
 
-@pytest.mark.xfail(strict=True, reason=MULTILEVEL_BUG)
 def test_a_current_report_does_not_land_in_watts():
     p = make_plugin()
     dev = MockDevice(1, "Kettle Plug", plugin_props={"sensorType": "energy"})
@@ -163,3 +157,82 @@ def test_a_plain_idle_still_clears_motion():
     p._handle_notification(dev, [0x71, 0x05, 0, 0, 0, 0xFF, 0x07, 0x08, 0x00])
     p._handle_notification(dev, [0x71, 0x05, 0, 0, 0, 0xFF, 0x07, 0x00, 0x00])
     assert dev.states.get("motion") is False
+
+
+# ------------------------------------------------------------ v5.16 additions
+
+def test_no_binary_code_maps_to_a_state_that_means_something_else():
+    """Every code the table maps must name the same thing as the standard."""
+    meaning = {"onOffState": "General purpose", "smoke": "Smoke", "coAlarm": "CO",
+               "waterLeak": "Water", "tamper": "Tamper", "contact": "Door/Window",
+               "motion": "Motion"}
+    for code, key in P.BINARY_SENSOR_TYPES.items():
+        assert BINARY_STANDARD[code] == meaning[key], f"0x{code:02X} -> {key}"
+
+
+def test_every_multilevel_code_names_the_reading_the_standard_gives_it():
+    standard = {0x01: "temperature", 0x03: "luminance", 0x04: "watts", 0x05: "humidity",
+                0x06: "velocity", 0x08: "pressure", 0x09: "atmosphericPressure",
+                0x0F: "voltage", 0x10: "current", 0x11: "co2Level", 0x12: "airFlow",
+                0x1B: "uvIndex", 0x1E: "noise", 0x1F: "soilMoisture",
+                0x22: "targetTemperature", 0x23: "pm25", 0x27: "voc"}
+    assert {k: v[0] for k, v in P.SENSOR_TYPES.items()} == standard
+
+
+@pytest.mark.parametrize("code", [0x0B, 0x0E, 0x13, 0x15, 0x19, 0x1C])
+def test_a_code_with_no_matching_state_is_reported_as_unknown(code):
+    p = make_plugin()
+    dev = MockDevice(1, "Odd Sensor", plugin_props={"sensorType": "generic"})
+    assert p._handle_multilevel(dev, [0x31, 0x05, code, 0x01, 0x05]) is False
+    assert len(dev.state_writes) == 0
+
+
+def test_a_current_report_lands_in_current():
+    p = make_plugin()
+    dev = MockDevice(1, "Kettle Plug", plugin_props={"sensorType": "energy"})
+    p._handle_multilevel(dev, [0x31, 0x05, 0x10, 0x22, 0x00, 0x05])   # 0.5 A
+    assert dev.state_writes["current"]["value"] == 0.5
+    assert dev.state_writes["current"]["uiValue"] == "0.5 A"
+
+
+def test_millivolts_are_stored_as_volts():
+    p = make_plugin()
+    dev = MockDevice(1, "Sensor", plugin_props={"sensorType": "generic"})
+    # 0x0F Voltage, precision 0, scale 1 (mV), size 2: 3300 mV
+    p._handle_multilevel(dev, [0x31, 0x05, 0x0F, 0x0A, 0x0C, 0xE4])
+    assert dev.state_writes["voltage"]["value"] == pytest.approx(3.3)
+    assert dev.state_writes["voltage"]["uiValue"] == "3.300 V"
+
+
+def test_milliamps_are_stored_as_amps():
+    p = make_plugin()
+    dev = MockDevice(1, "Sensor", plugin_props={"sensorType": "generic"})
+    # 0x10 Current, precision 0, scale 1 (mA), size 2: 250 mA
+    p._handle_multilevel(dev, [0x31, 0x05, 0x10, 0x0A, 0x00, 0xFA])
+    assert dev.state_writes["current"]["value"] == pytest.approx(0.25)
+
+
+def test_pm25_takes_its_unit_from_the_scale():
+    p = make_plugin()
+    dev = MockDevice(1, "Air", plugin_props={"sensorType": "generic"})
+    # 0x23 PM2.5, precision 0, scale 1 (ug/m3), size 1: 12
+    p._handle_multilevel(dev, [0x31, 0x05, 0x23, 0x09, 0x0C])
+    assert dev.state_writes["pm25"]["uiValue"] == "12 ug/m3"
+
+
+def test_a_target_temperature_in_fahrenheit_is_converted_like_a_temperature():
+    p = make_plugin(temp_unit="degC")
+    dev = MockDevice(1, "Thermostat", plugin_props={"sensorType": "generic"})
+    # 0x22 Target temperature, precision 0, scale 1 (degF), size 1: 68 F
+    p._handle_multilevel(dev, [0x31, 0x05, 0x22, 0x09, 0x44])
+    assert dev.state_writes["targetTemperature"]["value"] == pytest.approx(20.0)
+
+
+@pytest.mark.parametrize("code", [0x04, 0x05, 0x07, 0x09, 0x0B, 0x0D])
+def test_a_binary_type_with_no_state_of_its_own_only_sets_the_primary_state(code):
+    p = make_plugin()
+    dev = MockDevice(1, "Sensor", plugin_props={"sensorType": "generic"})
+    p._handle_binary_sensor(dev, [0x30, 0x03, 0xFF, code])
+    assert dev.state_writes["onOffState"]["value"] is True
+    for key in ("motion", "tamper", "waterLeak", "contact"):
+        assert key not in dev.state_writes, f"0x{code:02X} wrote {key}"

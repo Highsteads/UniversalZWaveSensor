@@ -7,6 +7,15 @@ nav_order: 10
 
 The newest version is at the top.
 
+## 5.16 — 1 November 2026
+
+- **Sensor readings are filed under the right name.** A sensor says what kind of reading it is sending with a code number, and two of the plugin's lookup tables had several codes wrong:
+  - From a sensor using the older on/off (binary) report, a **water leak** set **Tamper** instead of **Water Leak**, and a **tamper** (the cover being removed) set **Motion**. A CO2 alarm set **Water Leak**, and aux and tilt reports set **Motion**.
+  - Among measured readings, temperature, light, power, humidity and pressure were right, but most of the rest were not: **current** was stored as power in watts, **voltage** as CO2, **CO2** as UV index, and so on.
+  - Both tables now follow the Z-Wave standard. Check any trigger you built on one of the affected states, because it will now see the reading it was meant to.
+- A reading the plugin has no state for, such as dew point or weight, is now reported in the Event Log as unknown rather than being stored in an unrelated state. A binary report the plugin has no state for (CO2, heat, freeze, aux, tilt, glass break) changes only the device's on/off state.
+- Voltage and current sent in millivolts or milliamps are stored in volts and amps, so the states keep one unit. A thermostat's target temperature sent in Fahrenheit is converted like any other temperature.
+
 ## 5.15 — 27 September 2026
 
 - A sensor's **Online** state now shows online as soon as the plugin starts the device, and again every time the sensor reports. Before, it only changed when a sensor went quiet or came back, so a sensor that had never gone quiet could be listed as offline in **Show Status**. A sensor still shows offline when it has sent nothing for longer than the **Stale threshold**.
