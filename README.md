@@ -2,7 +2,7 @@
 
 **Show the readings Indigo leaves out when it does not fully know a Z-Wave sensor, as Indigo devices of their own.**
 
-**Version:** 5.16 | **Author:** CliveS & Claude | **Needs:** Indigo 2022.1 or later, with a Z-Wave interface
+**Version:** 5.17 | **Author:** CliveS & Claude | **Needs:** Indigo 2022.1 or later, with a Z-Wave interface
 
 **[Read the full guide](https://highsteads.github.io/UniversalZWaveSensor/)** — setting up, what everything means, and what to do when something goes wrong.
 
@@ -52,6 +52,8 @@ Any Z-Wave device you have already added to your network through Indigo, so that
 The [full guide](https://highsteads.github.io/UniversalZWaveSensor/) goes through each step, explains every setting, and shows how to work out which readings a sensor can send when Indigo made only one device.
 
 ## What's new
+
+**v5.17** — When a sensor reports that one thing has ended, only that thing is cleared. Before, motion ending also cleared a **Tamper** that was still active, and a tamper clearing could make a door sensor on the same device look closed while the door was open. Motion and tamper reports now only change the main on/off state of a **Motion** or **Generic** device.
 
 **v5.16** — Some sensor readings were filed under the wrong name. A water sensor using the older binary report showed as **Tamper** rather than **Water Leak**, a tamper showed as **Motion**, and readings such as current, voltage and CO2 landed in the wrong state, so a plug's current in amps appeared as its power in watts. The plugin's lookup tables now follow the Z-Wave standard. A reading the plugin has no state for is now reported as unknown rather than stored somewhere wrong.
 

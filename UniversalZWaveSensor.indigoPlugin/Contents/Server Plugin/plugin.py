@@ -7,7 +7,20 @@
 #              natively. Uses subscribeToIncoming() to receive ALL Z-Wave bytes.
 # Author:      CliveS & Claude Opus 4.8, Claude Opus 5.5
 # Date:        01-11-2026
-# Version:     5.16
+# Version:     5.17
+#
+# v5.17 (01-11-2026): a Home Security "all clear" clears only what has ended.
+# * An idle notification (event 0x00) names the event that ended in its first
+#   event parameter. It used to clear motion AND tamper whatever it named, so
+#   motion ending hid a tamper that was still active. Now a named idle clears
+#   only that event (motion/intrusion/glass break -> motion, tamper -> tamper);
+#   an idle naming nothing clears both, as before. Matches zwave-js 15.31.2
+#   (CCHandlers/NotificationCC.js: "The target value is the first byte of the
+#   event parameters", else "Reset all values to idle").
+# * Home Security events drive the primary on/off state only on Motion and
+#   Generic devices. A door contact on a node that also reports tamper or
+#   motion used to have its primary state set by those events, so a tamper
+#   clearing showed an open door as closed.
 #
 # v5.16 (01-11-2026): the two Z-Wave code tables now follow the Z-Wave standard
 # (checked against the zwave-js project's definitions).
@@ -296,6 +309,9 @@ HS_GLASS_BREAK_NL      = 0x06   # Glass break, unknown location
 HS_MOTION_DETECTED     = 0x07   # Motion Detection, location provided
 HS_MOTION_DETECTED_NL  = 0x08   # Motion Detection, unknown location
 HS_TAMPER_ALT          = 0x09   # Tampering — product moved / alternate code
+# Events this plugin records in the "motion" state, so an idle naming any of
+# them clears motion (5.17).
+HS_MOTION_FAMILY       = (0x01, 0x02, 0x05, 0x06, 0x07, 0x08)
 
 # ACCESS_CONTROL events — door/window open/close
 AC_DOOR_OPEN           = 0x16
@@ -1114,11 +1130,15 @@ class Plugin(indigo.PluginBase):
             _dt           = self._sensor_type(device)
             _motion_disp  = _dt in ("motion", "generic")
             _log          = self.logger.info if _motion_disp else self.logger.debug
+            # The primary on/off state follows Home Security only where motion
+            # IS the device's job (5.17). On a contact or lock device it means
+            # something else, and a tamper or motion report from the same node
+            # must not change it.
             if notif_event in (HS_MOTION_DETECTED, HS_MOTION_DETECTED_NL):
                 _log(f"{device.name}: Motion DETECTED")
                 self._safe_update(device, "motion",     value=True,  uiValue="detected")
-                device.updateStateOnServer("onOffState", value=True)
                 if _motion_disp:
+                    device.updateStateOnServer("onOffState", value=True)
                     self._safe_update(device, "displayStatus", value="detected")
             elif notif_event in (HS_TAMPER, HS_TAMPER_ALT):
                 _log(f"{device.name}: Tamper DETECTED")
@@ -1128,22 +1148,17 @@ class Plugin(indigo.PluginBase):
             elif notif_event in (HS_INTRUSION, HS_INTRUSION_NL):
                 _log(f"{device.name}: Intrusion DETECTED")
                 self._safe_update(device, "motion",     value=True,  uiValue="intrusion")
-                device.updateStateOnServer("onOffState", value=True)
                 if _motion_disp:
+                    device.updateStateOnServer("onOffState", value=True)
                     self._safe_update(device, "displayStatus", value="intrusion")
             elif notif_event in (HS_GLASS_BREAK, HS_GLASS_BREAK_NL):
                 _log(f"{device.name}: Glass break DETECTED")
                 self._safe_update(device, "motion",     value=True,  uiValue="glass break")
-                device.updateStateOnServer("onOffState", value=True)
                 if _motion_disp:
+                    device.updateStateOnServer("onOffState", value=True)
                     self._safe_update(device, "displayStatus", value="glass break")
             elif notif_event == HS_IDLE:
-                self.logger.debug(f"{device.name}: Home security idle (all clear)")
-                self._safe_update(device, "motion",     value=False, uiValue="clear")
-                self._safe_update(device, "tamper",     value=False, uiValue="clear")
-                device.updateStateOnServer("onOffState", value=False)
-                if _motion_disp:
-                    self._safe_update(device, "displayStatus", value="clear")
+                self._handle_home_security_idle(device, raw, _motion_disp)
             else:
                 self.logger.info(
                     f"{device.name}: HOME_SECURITY event=0x{notif_event:02X} "
@@ -1400,6 +1415,57 @@ class Plugin(indigo.PluginBase):
                           value=" ".join(f"{b:02X}" for b in raw))
         self._touch(device)
         return True
+
+    def _handle_home_security_idle(self, device, raw, motion_is_primary):
+        """A Home Security "idle" (event 0x00): something has ended.
+
+        The first event parameter names WHICH event ended, so only that one is
+        cleared: motion, intrusion or glass break clear "motion", a tamper
+        clears "tamper". An idle with no parameter (older devices) clears both.
+        This is the same rule zwave-js uses. Before 5.17 every idle cleared
+        both, so motion ending hid a tamper that was still active.
+
+        Only cleared events are written. The local device object's states are
+        not refreshed by updateStateOnServer, so what is still active is read
+        from the states as they were before this report, minus what it cleared.
+        """
+        named = self._extract_idle_event(raw)
+        if named is None:
+            clear_motion, clear_tamper = True, True
+        else:
+            clear_motion = named in HS_MOTION_FAMILY
+            clear_tamper = named in (HS_TAMPER, HS_TAMPER_ALT)
+            if not (clear_motion or clear_tamper):
+                self.logger.debug(
+                    f"{device.name}: Home security idle for event 0x{named:02X} "
+                    f"(no state of its own here)")
+                return
+
+        what = ("all clear" if named is None
+                else f"event 0x{named:02X} ended")
+        self.logger.debug(f"{device.name}: Home security idle ({what})")
+
+        if clear_motion:
+            self._safe_update(device, "motion", value=False, uiValue="clear")
+            if motion_is_primary:
+                device.updateStateOnServer("onOffState", value=False)
+        if clear_tamper:
+            self._safe_update(device, "tamper", value=False, uiValue="clear")
+
+        if motion_is_primary:
+            motion_left = not clear_motion and bool(device.states.get("motion"))
+            tamper_left = not clear_tamper and bool(device.states.get("tamper"))
+            status = "detected" if motion_left else "tamper" if tamper_left else "clear"
+            self._safe_update(device, "displayStatus", value=status)
+
+    @staticmethod
+    def _extract_idle_event(raw) -> int | None:
+        """The event an idle notification says has ended, or None if it names
+        none. Same layout as _extract_notif_user: raw[8] holds the event
+        parameter length in its low 5 bits, raw[9] is the first parameter."""
+        if len(raw) >= 10 and (raw[8] & 0x1F) >= 1:
+            return raw[9]
+        return None
 
     def _handle_battery(self, device, raw) -> bool:
         """

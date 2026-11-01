@@ -7,6 +7,11 @@ nav_order: 10
 
 The newest version is at the top.
 
+## 5.17 — 1 November 2026
+
+- **"All clear" clears only what has ended.** When a motion sensor's motion stops, or its cover is put back, it sends an "all clear" that says which of the two has ended. The plugin ignored that and cleared both, so motion ending also cleared a **Tamper** that was still active. Now only the event named is cleared. An "all clear" that names nothing, which some older sensors send, still clears both.
+- **A door sensor is not opened or closed by motion or tamper.** Some devices report a door contact as well as motion or tamper. Those motion and tamper reports used to switch the main on/off state of every device on the same sensor, so a tamper clearing could show an open door as closed. Motion and tamper reports now change the main on/off state only on a **Motion** or **Generic** device. The **Motion** and **Tamper** states themselves still update on every device that has them.
+
 ## 5.16 — 1 November 2026
 
 - **Sensor readings are filed under the right name.** A sensor says what kind of reading it is sending with a code number, and two of the plugin's lookup tables had several codes wrong:
